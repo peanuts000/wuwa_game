@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="SpecialEffectDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/special_effect_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "rainbow"
+display_name = "彩虹"
+effect_type = "color_clear"
+radius = 0
+direction_strategy = "none"
+base_score = 150
+marker = "彩"
+marker_color = Color(0.9, 0.35, 1, 1)
+

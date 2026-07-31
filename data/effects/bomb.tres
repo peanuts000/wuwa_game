@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="SpecialEffectDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/special_effect_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "bomb"
+display_name = "炸弹"
+effect_type = "area"
+radius = 1
+direction_strategy = "none"
+base_score = 120
+marker = "爆"
+marker_color = Color(1, 0.35, 0.2, 1)
+

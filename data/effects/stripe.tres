@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="SpecialEffectDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/special_effect_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "stripe"
+display_name = "条纹"
+effect_type = "line"
+radius = 0
+direction_strategy = "auto"
+base_score = 100
+marker = "⇄"
+marker_color = Color(1, 0.9, 0.25, 1)
+
