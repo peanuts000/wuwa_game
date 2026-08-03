@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://o1lvfl2ymg1g"
+
+[deps]
+
+files=["res://data/tables/collectibles.name.translation", "res://data/tables/collectibles.effect.translation", "res://data/tables/collectibles.effect.translation", "res://data/tables/collectibles.rarity.translation", "res://data/tables/collectibles.description.translation", "res://data/tables/collectibles.shop.translation", "res://data/tables/collectibles.pool.translation", "res://data/tables/collectibles.max.translation"]
+
+source_file="res://data/tables/collectibles.csv"
+dest_files=["res://data/tables/collectibles.name.translation", "res://data/tables/collectibles.effect.translation", "res://data/tables/collectibles.effect.translation", "res://data/tables/collectibles.rarity.translation", "res://data/tables/collectibles.description.translation", "res://data/tables/collectibles.shop.translation", "res://data/tables/collectibles.pool.translation", "res://data/tables/collectibles.max.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

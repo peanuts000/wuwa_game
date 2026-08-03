@@ -12,3 +12,7 @@ class_name PieceDefinition
 @export var default_special_effect_id: String = ""
 @export var unlocked_by_default: bool = true
 @export var tags: PackedStringArray = PackedStringArray()
+@export var resonance_cost: int = 30
+@export var resonance_effect_id: String = ""
+@export var resonance_effect_params: Dictionary = {}
+@export var sort_order: int = 0

@@ -1,0 +1,14 @@
+﻿id,name,attribute,normal_texture,clicked_texture,resonance_cost,resonance_effect_id,resonance_effect_params,rarity,description,unlocked_by_default,sort_order
+diffraction_phoebe,菲比,衍射,res://assets/pieces/diffraction_base.png,res://assets/pieces/selected/diffraction_base_selected.png,30,create_special_pieces,"{""special_effect_id"":""stripe"",""count"":2,""score"":120,""status"":""衍射共鸣解放：生成了条纹团子"",""avatar"":""衍射""}",common,菲比。共鸣解放会生成条纹团子。,true,10
+annihilation_chisaki,千咲,湮灭,res://assets/pieces/annihilation_base.png,res://assets/pieces/selected/annihilation_base_selected.png,45,clear_most_common,"{""score"":180,""status"":""湮灭共鸣解放：清除了数量最多的团子"",""avatar"":""湮灭""}",common,千咲。共鸣解放会清除数量最多的团子。,true,20
+condensation_coletta,柯莱塔,冷凝,res://assets/pieces/condensation_base.png,res://assets/pieces/selected/condensation_base_selected.png,35,cleanse_locks,"{""score"":100,""suppress_next_enemy"":true,""status"":""冷凝共鸣解放：解除锁定并抵消下一次干扰"",""avatar"":""冷凝""}",common,柯莱塔。共鸣解放会解除锁定并抵消下一次干扰。,true,30
+aero_sigrika,西格莉卡,气动,res://assets/pieces/aero_base.png,res://assets/pieces/selected/aero_base_selected.png,40,shuffle_board,"{""score"":120,""status"":""气动共鸣解放：重排棋盘"",""avatar"":""气动""}",common,西格莉卡。共鸣解放会重排棋盘。,true,40
+thermal_emis,爱弥斯,热熔,res://assets/pieces/thermal_base.png,res://assets/pieces/selected/thermal_base_selected.png,35,clear_area,"{""radius"":1,""score"":160,""status"":""热熔共鸣解放：熔解 3x3 区域"",""avatar"":""热熔""}",common,爱弥斯。共鸣解放会清除选中位置附近 3x3 区域。,true,50
+thermal_daniya,达妮娅,热熔,res://assets/pieces/daniya_base.png,res://assets/pieces/selected/daniya_base_selected.png,30,clear_area,"{""radius"":0,""score"":90,""status"":""达妮娅共鸣解放：熔解一个团子"",""avatar"":""达妮娅""}",common,达妮娅。共鸣解放会清除选中的 1 个团子。,true,55
+conductive_kakaro,卡卡罗,导电,res://assets/pieces/conductive_base.png,res://assets/pieces/selected/conductive_base_selected.png,50,clear_random_cross,"{""score"":170,""status"":""导电共鸣解放：贯穿一行一列"",""avatar"":""导电""}",common,卡卡罗。共鸣解放会贯穿随机一行一列。,true,60
+diffraction_base,衍射团子,衍射,res://assets/pieces/diffraction_base.png,res://assets/pieces/selected/diffraction_base_selected.png,30,none,{},common,衍射属性团子。大招：无效果占位。,true,110
+annihilation_base,湮灭团子,湮灭,res://assets/pieces/annihilation_base.png,res://assets/pieces/selected/annihilation_base_selected.png,45,none,{},common,湮灭属性团子。大招：无效果占位。,true,120
+condensation_base,冷凝团子,冷凝,res://assets/pieces/condensation_base.png,res://assets/pieces/selected/condensation_base_selected.png,35,none,{},common,冷凝属性团子。大招：无效果占位。,true,130
+aero_base,气动团子,气动,res://assets/pieces/aero_base.png,res://assets/pieces/selected/aero_base_selected.png,40,none,{},common,气动属性团子。大招：无效果占位。,true,140
+thermal_base,热熔团子,热熔,res://assets/pieces/thermal_base.png,res://assets/pieces/selected/thermal_base_selected.png,35,none,{},common,热熔属性团子。大招：无效果占位。,true,150
+conductive_base,导电团子,导电,res://assets/pieces/conductive_base.png,res://assets/pieces/selected/conductive_base_selected.png,50,none,{},common,导电属性团子。大招：无效果占位。,true,160

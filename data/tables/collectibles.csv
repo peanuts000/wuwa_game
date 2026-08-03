@@ -1,0 +1,8 @@
+﻿id,name,texture,effect_id,effect_params,rarity,description,shop_price,pool_weight,max_stack
+score_charm,计分贝壳,,score_mult,"{""value"":0.12}",common,获得分数提高 12%。,10,1,0
+sharp_pearl,锐光珍珠,,damage_mult,"{""value"":0.15}",common,对 Boss 造成的伤害提高 15%。,10,1,0
+warm_tide,暖潮瓶,,start_resonance,"{""value"":5}",common,每场战斗开始时，所有共鸣槽获得 5 点。,10,1,0
+echo_shell,回声螺,,resonance_mult,"{""value"":0.25}",rare,所有共鸣获取提高 25%。,16,1,0
+merchant_badge,商队徽章,,shop_discount,"{""value"":0.25}",rare,商城价格降低 25%。,16,1,0
+safe_anchor,稳泊锚,,heal_after_battle,"{""value"":1}",rare,每场战斗胜利后恢复 1 点生命。,16,1,0
+crown_conch,冠冕海螺,,damage_mult,"{""value"":0.35}",epic,对 Boss 造成的伤害提高 35%。,24,1,0

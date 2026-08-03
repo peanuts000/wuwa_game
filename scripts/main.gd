@@ -2,6 +2,7 @@ extends Control
 
 const BoardModelScript := preload("res://scripts/game/board_model.gd")
 const SaveManagerScript := preload("res://scripts/game/save_manager.gd")
+const RunMapCanvasScript := preload("res://scripts/ui/run_map_canvas.gd")
 const SLOT_ATTRIBUTES: Array[String] = ["衍射", "湮灭", "冷凝", "气动", "热熔", "导电"]
 const RESONANCE_MAX_VALUES: Array[int] = [30, 45, 35, 40, 35, 50]
 const SWAP_ANIM_SECONDS := 0.28
@@ -24,16 +25,27 @@ const BOSS_SEGMENTS := 3
 const BOSS_DAMAGE_PER_PIECE := 6
 const ATTACK_FLY_SECONDS := 0.42
 const ATTACK_FLY_STAGGER_SECONDS := 0.025
+const RUN_MAX_LIVES := 3
+const RUN_TOTAL_FLOORS := 5
+const RUN_MAP_ROWS := 5
+const RUN_MAP_MIN_LANES := 2
+const RUN_MAP_MAX_LANES := 3
+const RUN_PRE_BOSS_MIN_SUPPLIES := 3
+const RUN_PRE_BOSS_MAX_SUPPLIES := 5
+const RUN_MIN_SHOPS := 2
+const RUN_MAX_SHOPS := 3
 
 var catalog: PieceCatalog = PieceCatalog.new()
 var save: SaveManager
 var board: BoardModel
+var current_boss: Resource
 var selected_cell: Vector2i = Vector2i(-1, -1)
 var current_roster: PackedStringArray = PackedStringArray()
 var score: int = 0
 var combo: int = 0
 var max_combo: int = 0
 var boss_hp: int = BOSS_MAX_HP
+var boss_max_hp: int = BOSS_MAX_HP
 var moves_since_enemy: int = 0
 var skip_bonus_pending: bool = false
 var suppress_next_enemy_effect: bool = false
@@ -44,6 +56,10 @@ var stats: Dictionary = {
 	"special": 0,
 	"combo": 0,
 }
+var run_active: bool = false
+var run_state: Dictionary = {}
+var current_run_node: Dictionary = {}
+var pending_run_reward_items: Array = []
 
 @onready var root: VBoxContainer = VBoxContainer.new()
 var page: PanelContainer
@@ -56,6 +72,7 @@ var combo_label: Label
 var boss_label: Label
 var boss_name_label: Label
 var boss_avatar: Label
+var boss_avatar_texture: TextureRect
 var boss_hp_label: Label
 var boss_hp_segments: HBoxContainer
 var boss_status_text: String = "团子大魔王：观察中"
@@ -227,6 +244,7 @@ func _show_main_menu() -> void:
 	subtitle.add_theme_font_size_override("font_size", 28)
 	actions.add_child(subtitle)
 	actions.add_child(_make_spacer(16))
+	actions.add_child(_make_menu_button("开始探索", Callable(self, "_start_run")))
 	actions.add_child(_make_menu_button("开始游戏", Callable(self, "_start_game")))
 	actions.add_child(_make_menu_button("设置", func() -> void: _show_settings(Callable(self, "_show_main_menu"))))
 
@@ -453,10 +471,15 @@ func _update_roster_detail(piece: PieceDefinition = null) -> void:
 		var effect: SpecialEffectDefinition = catalog.get_effect(target_piece.default_special_effect_id)
 		if effect != null:
 			effect_name = effect.display_name
-	roster_detail_label.text = "%s大招：\n倍率：x%.1f  稀有度：%s\n技能：%s\n%s\n属性：%s" % [
+	var resonance_effect: String = target_piece.resonance_effect_id
+	if resonance_effect.is_empty():
+		resonance_effect = "none"
+	roster_detail_label.text = "%s大招：\n倍率：x%.1f  稀有度：%s\n共鸣：%d  效果：%s\n技能：%s\n%s\n属性：%s" % [
 		target_piece.display_name,
 		target_piece.multiplier,
 		target_piece.rarity,
+		target_piece.resonance_cost,
+		resonance_effect,
 		effect_name,
 		target_piece.description,
 		String(",").join(target_piece.tags),
@@ -613,11 +636,303 @@ func _make_spacer(height: float) -> Control:
 	spacer.custom_minimum_size = Vector2(0, height)
 	return spacer
 
-func _start_game() -> void:
+func _start_run() -> void:
+	run_active = true
 	score = 0
 	combo = 0
 	max_combo = 0
-	boss_hp = BOSS_MAX_HP
+	stats = {"normal": 0, "special": 0, "combo": 0}
+	current_roster = _sanitize_roster(current_roster)
+	run_state = {
+		"floor": 1,
+		"lives": RUN_MAX_LIVES,
+		"shells": 0,
+		"collectibles": [],
+		"completed_nodes": 0,
+		"map_nodes": [],
+		"available_node_ids": [],
+		"current_node_id": "",
+		"shop_items": [],
+	}
+	current_run_node = {}
+	pending_run_reward_items = []
+	_generate_floor_map(1)
+	_show_run_map()
+
+func _generate_floor_map(run_floor: int) -> void:
+	var map_nodes: Array = []
+	var rows: Array = []
+	var middle_nodes: Array = []
+	for row_index in range(RUN_MAP_ROWS):
+		var row_nodes: Array = []
+		var lane_count: int = rng.randi_range(RUN_MAP_MIN_LANES, RUN_MAP_MAX_LANES)
+		if row_index == RUN_MAP_ROWS - 1:
+			lane_count = rng.randi_range(RUN_PRE_BOSS_MIN_SUPPLIES, RUN_PRE_BOSS_MAX_SUPPLIES)
+		for lane_index in range(lane_count):
+			var node_type: String = _run_node_type_for_initial_map(row_index)
+			var node: Dictionary = {
+				"id": "f%d_r%d_l%d" % [run_floor, row_index, lane_index],
+				"type": node_type,
+				"title": _run_node_title(node_type, run_floor),
+				"floor": run_floor,
+				"row": row_index,
+				"lane": lane_index,
+				"links": [],
+				"completed": false,
+				"elite": node_type == "elite",
+			}
+			row_nodes.append(node)
+			map_nodes.append(node)
+			if row_index > 0 and row_index < RUN_MAP_ROWS - 1:
+				middle_nodes.append(node)
+		rows.append(row_nodes)
+	_assign_shop_nodes(middle_nodes, run_floor)
+	var boss_node: Dictionary = {
+		"id": "f%d_boss" % run_floor,
+		"type": "boss",
+		"title": _run_node_title("boss", run_floor),
+		"boss_id": _default_boss_id(),
+		"floor": run_floor,
+		"row": RUN_MAP_ROWS,
+		"lane": 1,
+		"links": [],
+		"completed": false,
+		"elite": true,
+	}
+	_assign_reachable_tree_links(rows)
+	for node in rows[RUN_MAP_ROWS - 1]:
+		node["links"] = [String(boss_node.get("id", ""))]
+	map_nodes.append(boss_node)
+	run_state["map_nodes"] = map_nodes
+	run_state["available_node_ids"] = _ids_for_row(rows[0])
+	run_state["current_node_id"] = ""
+
+func _run_node_type_for_initial_map(row_index: int) -> String:
+	if row_index == 0:
+		return "battle"
+	if row_index == RUN_MAP_ROWS - 1:
+		return "supply"
+	var node_types: Array[String] = ["battle", "battle", "elite", "event"]
+	return node_types[rng.randi_range(0, node_types.size() - 1)]
+
+func _assign_shop_nodes(candidates: Array, run_floor: int) -> void:
+	if candidates.is_empty():
+		return
+	var shop_count: int = min(candidates.size(), rng.randi_range(RUN_MIN_SHOPS, RUN_MAX_SHOPS))
+	candidates.shuffle()
+	for index in range(shop_count):
+		var node: Dictionary = candidates[index]
+		node["type"] = "shop"
+		node["title"] = _run_node_title("shop", run_floor)
+		node["elite"] = false
+
+func _assign_reachable_tree_links(rows: Array) -> void:
+	for row in rows:
+		for node in row:
+			node["links"] = []
+	for row_index in range(rows.size() - 1):
+		var current_row: Array = rows[row_index]
+		var next_row: Array = rows[row_index + 1]
+		_assign_primary_tree_links(current_row, next_row)
+		_trim_tree_row_links(current_row, next_row)
+
+func _assign_primary_tree_links(current_row: Array, next_row: Array) -> void:
+	var incoming_by_id: Dictionary = {}
+	for next_node in next_row:
+		incoming_by_id[String(next_node.get("id", ""))] = 0
+	for source_index in range(current_row.size()):
+		var target_index: int = _tree_target_index_for_source(source_index, current_row.size(), next_row.size())
+		var target_id: String = String(next_row[target_index].get("id", ""))
+		_add_tree_link(current_row[source_index], target_id, incoming_by_id)
+	for next_index in range(next_row.size()):
+		var target_id: String = String(next_row[next_index].get("id", ""))
+		if int(incoming_by_id.get(target_id, 0)) > 0:
+			continue
+		var source_index: int = _tree_source_index_for_target(next_index, next_row.size(), current_row.size())
+		_add_tree_link(current_row[source_index], target_id, incoming_by_id)
+
+func _tree_source_index_for_target(target_index: int, target_count: int, source_count: int) -> int:
+	if target_count <= 1 or source_count <= 1:
+		return 0
+	return clamp(roundi(float(target_index) * float(source_count - 1) / float(target_count - 1)), 0, source_count - 1)
+
+func _tree_target_index_for_source(source_index: int, source_count: int, target_count: int) -> int:
+	if source_count <= 1 or target_count <= 1:
+		return 0
+	return clamp(roundi(float(source_index) * float(target_count - 1) / float(source_count - 1)), 0, target_count - 1)
+
+func _add_tree_link(source_node: Dictionary, target_id: String, incoming_by_id: Dictionary) -> void:
+	if target_id.is_empty() or int(incoming_by_id.get(target_id, 0)) >= 2:
+		return
+	var links: Array = _node_links(source_node)
+	if links.has(target_id) or links.size() >= 2:
+		return
+	links.append(target_id)
+	links.sort_custom(func(a: String, b: String) -> bool: return a < b)
+	source_node["links"] = links
+	incoming_by_id[target_id] = int(incoming_by_id.get(target_id, 0)) + 1
+
+func _trim_tree_row_links(current_row: Array, next_row: Array) -> void:
+	var allowed_ids: Array = _ids_for_row(next_row)
+	var incoming_by_id: Dictionary = {}
+	for target_id in allowed_ids:
+		incoming_by_id[target_id] = 0
+	for node in current_row:
+		var node_data: Dictionary = node
+		var trimmed_links: Array = []
+		for target_id in _node_links(node_data):
+			var normalized_id: String = String(target_id)
+			if not allowed_ids.has(normalized_id) or trimmed_links.has(normalized_id) or trimmed_links.size() >= 2:
+				continue
+			if int(incoming_by_id.get(normalized_id, 0)) >= 2:
+				continue
+			trimmed_links.append(normalized_id)
+			incoming_by_id[normalized_id] = int(incoming_by_id.get(normalized_id, 0)) + 1
+		node_data["links"] = trimmed_links
+
+func _ids_for_row(row_nodes: Array) -> Array:
+	var ids: Array = []
+	for node in row_nodes:
+		ids.append(String(node.get("id", "")))
+	return ids
+
+func _make_legacy_run_node(node_type: String, run_floor: int) -> Dictionary:
+	return {
+			"id": "",
+			"type": node_type,
+			"title": _run_node_title(node_type, run_floor),
+			"floor": run_floor,
+			"row": 0,
+			"lane": 0,
+			"links": [],
+			"completed": false,
+			"elite": node_type == "elite",
+		}
+
+func _run_node_title(node_type: String, run_floor: int) -> String:
+	match node_type:
+		"battle":
+			return "第 %d 层 普通战斗" % run_floor
+		"elite":
+			return "第 %d 层 精英战斗" % run_floor
+		"supply":
+			return "第 %d 层 补给" % run_floor
+		"shop":
+			return "第 %d 层 商城" % run_floor
+		"event":
+			return "第 %d 层 事件" % run_floor
+		"boss":
+			return "第 %d 层 最终首领" % run_floor
+	return "第 %d 层 未知节点" % run_floor
+
+func _show_run_map() -> void:
+	_clear_screen()
+	current_screen = "run_map"
+	_add_title("探索路线")
+	var top_bar: HBoxContainer = HBoxContainer.new()
+	top_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	top_bar.add_theme_constant_override("separation", 12)
+	top_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(top_bar)
+	var left_spacer: Control = Control.new()
+	left_spacer.custom_minimum_size = Vector2(160, 1)
+	left_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_bar.add_child(left_spacer)
+	var summary: Label = Label.new()
+	summary.text = "层数：%d / %d    生命：%d / %d    贝币：%d    藏品：%d    分数：%d" % [
+		int(run_state.get("floor", 1)),
+		RUN_TOTAL_FLOORS,
+		int(run_state.get("lives", RUN_MAX_LIVES)),
+		RUN_MAX_LIVES,
+		int(run_state.get("shells", 0)),
+		_run_collectibles().size(),
+		score,
+	]
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_bar.add_child(summary)
+	var settings_button: Button = _make_button("设置", Callable(self, "_show_run_pause"))
+	settings_button.custom_minimum_size = Vector2(160, 60)
+	settings_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	top_bar.add_child(settings_button)
+	var map_scroll: ScrollContainer = ScrollContainer.new()
+	map_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	map_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	map_scroll.custom_minimum_size = Vector2(0, clamp(get_viewport_rect().size.y * 0.84, 520.0, 860.0))
+	map_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(map_scroll)
+	var canvas_size: Vector2 = Vector2(max(1600.0, get_viewport_rect().size.x * 1.16), map_scroll.custom_minimum_size.y)
+	var node_positions: Dictionary = _run_map_node_positions(canvas_size)
+	var map_canvas: Control = RunMapCanvasScript.new()
+	map_canvas.custom_minimum_size = canvas_size
+	map_canvas.size = canvas_size
+	map_canvas.setup(_run_map_nodes(), _run_available_node_ids(), node_positions)
+	map_scroll.add_child(map_canvas)
+	for node in _run_map_nodes():
+		var node_data: Dictionary = node
+		var node_id: String = String(node_data.get("id", ""))
+		var captured_node_id: String = node_id
+		var button: Button = _make_run_map_node_button(node_data)
+		button.position = node_positions.get(node_id, Vector2.ZERO) - button.custom_minimum_size * 0.5
+		button.disabled = not _is_run_node_available(node_id) or bool(node_data.get("completed", false))
+		button.pressed.connect(func() -> void:
+			_enter_run_node_by_id(captured_node_id)
+		)
+		map_canvas.add_child(button)
+
+func _run_node_hint(node_type: String) -> String:
+	match node_type:
+		"battle":
+			return "胜利获得贝币，可能获得藏品"
+		"elite":
+			return "更强 Boss，固定获得藏品"
+		"supply":
+			return "获得一个补给包"
+		"shop":
+			return "花费贝币购买藏品"
+		"event":
+			return "选择一个随机事件"
+		"boss":
+			return "通关探索"
+	return ""
+
+func _enter_run_node_by_id(node_id: String) -> void:
+	if not _is_run_node_available(node_id):
+		_show_run_map()
+		return
+	var node: Dictionary = _find_run_node(node_id)
+	if node.is_empty():
+		_show_run_map()
+		return
+	_enter_run_node(node)
+
+func _enter_run_node(node: Dictionary) -> void:
+	current_run_node = node.duplicate(true)
+	run_state["current_node_id"] = String(current_run_node.get("id", ""))
+	match String(current_run_node.get("type", "")):
+		"battle", "elite", "boss":
+			_start_battle_node(current_run_node)
+		"supply":
+			_show_supply_node()
+		"shop":
+			run_state["shop_items"] = _generate_shop_items()
+			_show_shop_node()
+		"event":
+			_show_event_node()
+		_:
+			_show_run_map()
+
+func _start_game() -> void:
+	run_active = false
+	current_run_node = {}
+	pending_run_reward_items = []
+	score = 0
+	combo = 0
+	max_combo = 0
+	current_boss = catalog.get_default_boss()
+	boss_max_hp = _current_boss_base_hp()
+	boss_hp = boss_max_hp
 	moves_since_enemy = 0
 	skip_bonus_pending = false
 	suppress_next_enemy_effect = false
@@ -629,6 +944,53 @@ func _start_game() -> void:
 	current_roster = _sanitize_roster(current_roster)
 	_show_game_shell("棋盘生成中...")
 	call_deferred("_create_board")
+
+func _start_battle_node(node: Dictionary) -> void:
+	combo = 0
+	max_combo = 0
+	current_boss = catalog.get_boss(String(node.get("boss_id", "")))
+	if current_boss == null:
+		current_boss = catalog.get_default_boss()
+	boss_max_hp = _run_boss_hp_for_node(node)
+	boss_hp = boss_max_hp
+	moves_since_enemy = 0
+	skip_bonus_pending = false
+	suppress_next_enemy_effect = false
+	resonance_values = []
+	for i in range(SLOT_ATTRIBUTES.size()):
+		resonance_values.append(0)
+	var start_charge: int = int(_collectible_total("start_resonance"))
+	if start_charge > 0:
+		for i in range(SLOT_ATTRIBUTES.size()):
+			resonance_values[i] = min(_resonance_cost(i), start_charge)
+	boss_status_text = "探索战斗开始"
+	current_roster = _sanitize_roster(current_roster)
+	_show_game_shell("探索战斗准备中...")
+	call_deferred("_create_board")
+
+func _run_boss_hp_for_node(node: Dictionary) -> int:
+	var run_floor: int = int(node.get("floor", int(run_state.get("floor", 1))))
+	var node_type: String = String(node.get("type", "battle"))
+	var hp: int = _current_boss_base_hp() + (run_floor - 1) * 45
+	if node_type == "elite":
+		hp += 90
+	elif node_type == "boss":
+		hp += 180
+	return hp
+
+func _default_boss_id() -> String:
+	var boss: Resource = catalog.get_default_boss()
+	return boss.id if boss != null else ""
+
+func _current_boss_base_hp() -> int:
+	if current_boss != null:
+		return max(1, current_boss.max_hp)
+	return BOSS_MAX_HP
+
+func _current_boss_name() -> String:
+	if current_boss != null and not current_boss.display_name.is_empty():
+		return current_boss.display_name
+	return "团子大魔王"
 
 func _create_board() -> void:
 	board = BoardModelScript.new()
@@ -714,7 +1076,16 @@ func _show_game_shell(boss_text: String = "团子大魔王：观察中") -> void
 	boss_avatar.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	boss_avatar.custom_minimum_size = Vector2(clamp(viewport_size.x * 0.09, 92.0, 180.0), clamp(viewport_size.y * 0.14, 70.0, 150.0))
 	boss_avatar.add_theme_font_size_override("font_size", roundi(clamp(viewport_size.y * 0.05, 22.0, 30.0)))
-	boss_box.add_child(boss_avatar)
+	if current_boss != null and current_boss.texture != null:
+		boss_avatar_texture = TextureRect.new()
+		boss_avatar_texture.texture = current_boss.texture
+		boss_avatar_texture.custom_minimum_size = boss_avatar.custom_minimum_size
+		boss_avatar_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		boss_avatar_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		boss_box.add_child(boss_avatar_texture)
+	else:
+		boss_avatar_texture = null
+		boss_box.add_child(boss_avatar)
 	boss_hp_segments = HBoxContainer.new()
 	boss_hp_segments.alignment = BoxContainer.ALIGNMENT_CENTER
 	boss_hp_segments.add_theme_constant_override("separation", 4)
@@ -729,7 +1100,7 @@ func _show_game_shell(boss_text: String = "团子大魔王：观察中") -> void
 	boss_text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	boss_box.add_child(boss_text_box)
 	boss_name_label = Label.new()
-	boss_name_label.text = "团子大魔王"
+	boss_name_label.text = _current_boss_name()
 	boss_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	boss_name_label.add_theme_font_size_override("font_size", roundi(clamp(viewport_size.y * 0.052, 22.0, 32.0)))
 	boss_text_box.add_child(boss_name_label)
@@ -779,12 +1150,12 @@ func _redraw_game() -> void:
 
 func _update_boss_hp_ui() -> void:
 	if boss_hp_label != null:
-		boss_hp_label.text = "%d / %d" % [max(0, boss_hp), BOSS_MAX_HP]
+		boss_hp_label.text = "%d / %d" % [max(0, boss_hp), boss_max_hp]
 	if boss_hp_segments == null:
 		return
 	for child in boss_hp_segments.get_children():
 		child.queue_free()
-	var segment_max: float = float(BOSS_MAX_HP) / float(BOSS_SEGMENTS)
+	var segment_max: float = float(boss_max_hp) / float(BOSS_SEGMENTS)
 	for index in range(BOSS_SEGMENTS):
 		var segment: ProgressBar = ProgressBar.new()
 		segment.min_value = 0
@@ -796,7 +1167,7 @@ func _update_boss_hp_ui() -> void:
 		boss_hp_segments.add_child(segment)
 
 func _boss_phase() -> int:
-	var hp_ratio: float = float(boss_hp) / float(BOSS_MAX_HP)
+	var hp_ratio: float = float(boss_hp) / float(boss_max_hp)
 	if hp_ratio > 0.6667:
 		return 3
 	if hp_ratio > 0.3334:
@@ -807,14 +1178,19 @@ func _damage_boss(cleared_positions: Array) -> void:
 	if boss_hp <= 0 or cleared_positions.is_empty():
 		return
 	var damage: int = cleared_positions.size() * BOSS_DAMAGE_PER_PIECE
+	if run_active:
+		damage = roundi(float(damage) * (1.0 + _collectible_total("damage_mult")))
 	boss_hp = max(0, boss_hp - damage)
 	_update_boss_hp_ui()
 	if boss_hp <= 0:
-		_set_boss_status("团子大魔王倒下了，关卡完成！", "胜利")
+		_set_boss_status("%s倒下了，关卡完成！" % _current_boss_name(), "胜利")
 	else:
-		_set_boss_status("团子命中大魔王，造成 %d 点伤害。" % damage, "受击")
+		_set_boss_status("团子命中%s，造成 %d 点伤害。" % [_current_boss_name(), damage], "受击")
 
 func _finish_battle() -> void:
+	if run_active:
+		_on_run_battle_won()
+		return
 	save.high_score = max(save.high_score, score)
 	save.save()
 	_clear_screen()
@@ -867,7 +1243,7 @@ func _make_battle_roster_slot(index: int) -> Button:
 	var progress: ProgressBar = ProgressBar.new()
 	progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	progress.min_value = 0
-	progress.max_value = RESONANCE_MAX_VALUES[index]
+	progress.max_value = _resonance_cost(index)
 	progress.value = _resonance_value(index)
 	progress.show_percentage = false
 	progress.custom_minimum_size = Vector2(0, 10)
@@ -877,7 +1253,7 @@ func _make_battle_roster_slot(index: int) -> Button:
 	value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value_label.add_theme_font_size_override("font_size", max(11, int(slot_size * 0.08)))
-	value_label.text = "共鸣 %d/%d" % [_resonance_value(index), RESONANCE_MAX_VALUES[index]]
+	value_label.text = "共鸣 %d/%d" % [_resonance_value(index), _resonance_cost(index)]
 	if _is_resonance_ready(index):
 		value_label.text = "共鸣解放"
 	box.add_child(value_label)
@@ -914,7 +1290,7 @@ func _on_battle_roster_pressed(slot_index: int) -> void:
 	if is_animating_board:
 		return
 	if not _is_resonance_ready(slot_index):
-		_set_boss_status("%s回路：%d/%d" % [SLOT_ATTRIBUTES[slot_index], _resonance_value(slot_index), RESONANCE_MAX_VALUES[slot_index]], "共鸣")
+		_set_boss_status("%s回路：%d/%d" % [SLOT_ATTRIBUTES[slot_index], _resonance_value(slot_index), _resonance_cost(slot_index)], "共鸣")
 		return
 	_release_resonance(slot_index)
 
@@ -980,32 +1356,7 @@ func _add_corner_line(parent: Control, color: Color, anchor_left: float, anchor_
 	parent.add_child(line)
 
 func _selection_color_for_piece_id(piece_id: String) -> Color:
-	match piece_id:
-		"diffraction_base":
-			return Color(0.72, 0.72, 0.31, 1.0)
-		"diffraction_phoebe":
-			return Color(0.72, 0.72, 0.31, 1.0)
-		"condensation_base":
-			return Color(0.42, 0.58, 0.70, 1.0)
-		"condensation_coletta":
-			return Color(0.42, 0.58, 0.70, 1.0)
-		"thermal_base":
-			return Color(0.74, 0.20, 0.32, 1.0)
-		"thermal_emis":
-			return Color(0.74, 0.20, 0.32, 1.0)
-		"conductive_base":
-			return Color(0.66, 0.34, 0.72, 1.0)
-		"conductive_kakaro":
-			return Color(0.66, 0.34, 0.72, 1.0)
-		"aero_base":
-			return Color(0.34, 0.72, 0.62, 1.0)
-		"aero_sigrika":
-			return Color(0.34, 0.72, 0.62, 1.0)
-		"annihilation_base":
-			return Color(0.70, 0.26, 0.52, 1.0)
-		"annihilation_chisaki":
-			return Color(0.70, 0.26, 0.52, 1.0)
-	return Color.TRANSPARENT
+	return _selection_color_for_attribute(_attribute_for_piece_id(piece_id))
 
 func _icon_texture_for_cell(piece: PieceDefinition, pos: Vector2i) -> Texture2D:
 	if pos == selected_cell and piece.selected_icon_texture != null:
@@ -1053,32 +1404,7 @@ func _add_piece_background_to_button(button: Button, piece_id: String, cell_size
 	button.add_child(panel)
 
 func _background_texture_for_piece_id(piece_id: String) -> Texture2D:
-	match piece_id:
-		"annihilation_base":
-			return load("res://assets/pieces/backgrounds/annihilation_bg.png")
-		"annihilation_chisaki":
-			return load("res://assets/pieces/backgrounds/annihilation_bg.png")
-		"diffraction_base":
-			return load("res://assets/pieces/backgrounds/diffraction_bg.png")
-		"diffraction_phoebe":
-			return load("res://assets/pieces/backgrounds/diffraction_bg.png")
-		"conductive_base":
-			return load("res://assets/pieces/backgrounds/conductive_bg.png")
-		"conductive_kakaro":
-			return load("res://assets/pieces/backgrounds/conductive_bg.png")
-		"condensation_base":
-			return load("res://assets/pieces/backgrounds/condensation_bg.png")
-		"condensation_coletta":
-			return load("res://assets/pieces/backgrounds/condensation_bg.png")
-		"thermal_base":
-			return load("res://assets/pieces/backgrounds/thermal_bg.png")
-		"thermal_emis":
-			return load("res://assets/pieces/backgrounds/thermal_bg.png")
-		"aero_base":
-			return load("res://assets/pieces/backgrounds/aero_bg.png")
-		"aero_sigrika":
-			return load("res://assets/pieces/backgrounds/aero_bg.png")
-	return null
+	return _background_texture_for_attribute(_attribute_for_piece_id(piece_id))
 
 func _make_piece_texture_background_style(texture: Texture2D) -> StyleBoxTexture:
 	var style: StyleBoxTexture = StyleBoxTexture.new()
@@ -1107,31 +1433,73 @@ func _make_piece_circle_background_style(bg_color: Color) -> StyleBoxFlat:
 	return style
 
 func _background_color_for_piece_id(piece_id: String) -> Color:
+	return _background_color_for_attribute(_attribute_for_piece_id(piece_id))
+
+func _attribute_for_piece_id(piece_id: String) -> String:
+	var piece: PieceDefinition = catalog.get_piece(piece_id)
+	if piece != null and not piece.tags.is_empty():
+		return String(piece.tags[0])
 	match piece_id:
-		"diffraction_base":
+		"diffraction_base", "diffraction_phoebe":
+			return "衍射"
+		"annihilation_base", "annihilation_chisaki":
+			return "湮灭"
+		"condensation_base", "condensation_coletta":
+			return "冷凝"
+		"aero_base", "aero_sigrika":
+			return "气动"
+		"thermal_base", "thermal_emis":
+			return "热熔"
+		"conductive_base", "conductive_kakaro":
+			return "导电"
+	return ""
+
+func _background_texture_for_attribute(attribute: String) -> Texture2D:
+	match attribute:
+		"衍射":
+			return load("res://assets/pieces/backgrounds/diffraction_bg.png")
+		"湮灭":
+			return load("res://assets/pieces/backgrounds/annihilation_bg.png")
+		"冷凝":
+			return load("res://assets/pieces/backgrounds/condensation_bg.png")
+		"气动":
+			return load("res://assets/pieces/backgrounds/aero_bg.png")
+		"热熔":
+			return load("res://assets/pieces/backgrounds/thermal_bg.png")
+		"导电":
+			return load("res://assets/pieces/backgrounds/conductive_bg.png")
+	return null
+
+func _selection_color_for_attribute(attribute: String) -> Color:
+	match attribute:
+		"衍射":
+			return Color(0.72, 0.72, 0.31, 1.0)
+		"湮灭":
+			return Color(0.70, 0.26, 0.52, 1.0)
+		"冷凝":
+			return Color(0.42, 0.58, 0.70, 1.0)
+		"气动":
+			return Color(0.34, 0.72, 0.62, 1.0)
+		"热熔":
+			return Color(0.74, 0.20, 0.32, 1.0)
+		"导电":
+			return Color(0.66, 0.34, 0.72, 1.0)
+	return Color.TRANSPARENT
+
+func _background_color_for_attribute(attribute: String) -> Color:
+	match attribute:
+		"衍射":
 			return Color(1.0, 0.82, 0.12, 0.34)
-		"diffraction_phoebe":
-			return Color(1.0, 0.82, 0.12, 0.34)
-		"condensation_base":
-			return Color(0.18, 0.58, 1.0, 0.34)
-		"condensation_coletta":
-			return Color(0.18, 0.58, 1.0, 0.34)
-		"thermal_base":
-			return Color(1.0, 0.18, 0.12, 0.34)
-		"thermal_emis":
-			return Color(1.0, 0.18, 0.12, 0.34)
-		"conductive_base":
-			return Color(0.62, 0.20, 1.0, 0.34)
-		"conductive_kakaro":
-			return Color(0.62, 0.20, 1.0, 0.34)
-		"aero_base":
-			return Color(0.18, 0.86, 0.28, 0.34)
-		"aero_sigrika":
-			return Color(0.18, 0.86, 0.28, 0.34)
-		"annihilation_base":
+		"湮灭":
 			return Color(0.46, 0.02, 0.04, 0.42)
-		"annihilation_chisaki":
-			return Color(0.46, 0.02, 0.04, 0.42)
+		"冷凝":
+			return Color(0.18, 0.58, 1.0, 0.34)
+		"气动":
+			return Color(0.18, 0.86, 0.28, 0.34)
+		"热熔":
+			return Color(1.0, 0.18, 0.12, 0.34)
+		"导电":
+			return Color(0.62, 0.20, 1.0, 0.34)
 	return Color.TRANSPARENT
 
 func _add_piece_icon_to_button(button: Button, texture: Texture2D, cell: Dictionary, piece: PieceDefinition, cell_size: float) -> void:
@@ -1652,6 +2020,8 @@ func _add_score(amount: int) -> void:
 		final_amount = roundi(float(final_amount) * 1.1)
 		skip_bonus_pending = false
 	final_amount = roundi(float(final_amount) * (1.0 + min(combo, 5) * 0.2))
+	if run_active:
+		final_amount = roundi(float(final_amount) * (1.0 + _collectible_total("score_mult")))
 	score += final_amount
 
 func _after_player_move() -> void:
@@ -1682,11 +2052,15 @@ func _after_player_move() -> void:
 	_redraw_game()
 
 func _enemy_check_interval() -> int:
+	if current_boss != null:
+		return max(1, current_boss.skill_interval)
 	if _boss_phase() <= 2:
 		return 2
 	return 3
 
 func _enemy_effect_chance() -> float:
+	if current_boss != null:
+		return clamp(current_boss.skill_chance, 0.0, 1.0)
 	match _boss_phase():
 		3:
 			return 0.30
@@ -1695,11 +2069,14 @@ func _enemy_effect_chance() -> float:
 	return 0.70
 
 func _trigger_enemy_extra_skill() -> void:
-	_set_boss_status("大魔王进入濒危阶段，额外技能已触发（效果待接入）。", "蓄力")
+	_set_boss_status("%s进入濒危阶段，额外技能已触发。" % _current_boss_name(), "蓄力")
 	_add_resonance(2, 8, "大魔王额外技能")
 	_redraw_game()
 
 func _trigger_enemy_effect() -> void:
+	if current_boss != null and not current_boss.skill_effect_id.is_empty():
+		_apply_boss_skill_effect(current_boss.skill_effect_id, current_boss.skill_effect_params)
+		return
 	var roll: int = rng.randi_range(0, 2)
 	if roll == 0:
 		board.lock_random_cells(3)
@@ -1717,20 +2094,69 @@ func _trigger_enemy_effect() -> void:
 		_set_boss_status("团子大魔王：制造了锁定干扰", "扰")
 		_redraw_game()
 
+func _apply_boss_skill_effect(effect_id: String, params: Dictionary) -> void:
+	match effect_id:
+		"boss_random_interference":
+			var roll: int = rng.randi_range(0, 2)
+			if roll == 0:
+				_apply_boss_lock_cells(_param_int(params, "lock_large", 3), _param_int(params, "lock_resonance", 10), "%s：锁定了 %d 个格子")
+			elif roll == 1:
+				_apply_boss_break_combo(_param_int(params, "break_resonance", 6))
+			else:
+				_apply_boss_lock_cells(_param_int(params, "lock_small", 1), _param_int(params, "small_resonance", 5), "%s：制造了锁定干扰")
+		"lock_cells":
+			_apply_boss_lock_cells(_param_int(params, "count", 1), _param_int(params, "resonance", 5), _param_text(params, "status", "%s：锁定了 %d 个格子"))
+		"break_combo":
+			_apply_boss_break_combo(_param_int(params, "resonance", 6))
+		"none", "":
+			_redraw_game()
+		_:
+			push_warning("Unsupported boss skill effect_id: %s" % effect_id)
+			_redraw_game()
+
+func _apply_boss_lock_cells(count: int, resonance: int, status_template: String) -> void:
+	count = max(1, count)
+	board.lock_random_cells(count)
+	_add_resonance(2, resonance, "大魔王锁定")
+	if status_template.contains("%d"):
+		_set_boss_status(status_template % [_current_boss_name(), count], "攻击")
+	elif status_template.contains("%s"):
+		_set_boss_status(status_template % _current_boss_name(), "攻击")
+	else:
+		_set_boss_status(status_template, "攻击")
+	_redraw_game()
+
+func _apply_boss_break_combo(resonance: int) -> void:
+	combo = 0
+	_add_resonance(2, resonance, "大魔王打断")
+	_set_boss_status("%s：打断了 Combo" % _current_boss_name(), "怒")
+	_redraw_game()
+
 func _resonance_value(slot_index: int) -> int:
 	if slot_index < 0 or slot_index >= resonance_values.size():
 		return 0
 	return resonance_values[slot_index]
 
-func _is_resonance_ready(slot_index: int) -> bool:
-	return slot_index >= 0 and slot_index < RESONANCE_MAX_VALUES.size() and _resonance_value(slot_index) >= RESONANCE_MAX_VALUES[slot_index]
+func _resonance_cost(slot_index: int) -> int:
+	if slot_index >= 0 and slot_index < current_roster.size():
+		var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index])
+		if piece != null and piece.resonance_cost > 0:
+			return piece.resonance_cost
+	if slot_index >= 0 and slot_index < RESONANCE_MAX_VALUES.size():
+		return RESONANCE_MAX_VALUES[slot_index]
+	return 30
 
-func _add_resonance(slot_index: int, amount: int, reason: String = "") -> void:
-	if slot_index < 0 or slot_index >= RESONANCE_MAX_VALUES.size() or amount <= 0:
+func _is_resonance_ready(slot_index: int) -> bool:
+	return slot_index >= 0 and slot_index < SLOT_ATTRIBUTES.size() and _resonance_value(slot_index) >= _resonance_cost(slot_index)
+
+func _add_resonance(slot_index: int, amount: int, _reason: String = "") -> void:
+	if slot_index < 0 or slot_index >= SLOT_ATTRIBUTES.size() or amount <= 0:
 		return
-	while resonance_values.size() < RESONANCE_MAX_VALUES.size():
+	if run_active:
+		amount = max(1, roundi(float(amount) * (1.0 + _collectible_total("resonance_mult"))))
+	while resonance_values.size() < SLOT_ATTRIBUTES.size():
 		resonance_values.append(0)
-	resonance_values[slot_index] = min(RESONANCE_MAX_VALUES[slot_index], resonance_values[slot_index] + amount)
+	resonance_values[slot_index] = min(_resonance_cost(slot_index), resonance_values[slot_index] + amount)
 
 func _slot_index_for_piece_id(piece_id: String) -> int:
 	for index in range(current_roster.size()):
@@ -1754,20 +2180,9 @@ func _release_resonance(slot_index: int) -> void:
 	var release_target_cell: Vector2i = selected_cell
 	selected_cell = Vector2i(-1, -1)
 	var released: bool = false
-	match slot_index:
-		0:
-			released = _release_diffraction()
-		1:
-			released = await _release_clear_targets(_targets_for_most_common_piece(), 180, "湮灭共鸣解放：清除了数量最多的团子")
-		2:
-			released = _release_condensation()
-		3:
-			released = _release_aero()
-		4:
-			var center: Vector2i = release_target_cell if release_target_cell != Vector2i(-1, -1) else Vector2i(rng.randi_range(0, BoardModel.WIDTH - 1), rng.randi_range(0, BoardModel.HEIGHT - 1))
-			released = await _release_clear_targets(_square_targets(center, 1), 160, "热熔共鸣解放：熔解 3x3 区域")
-		5:
-			released = await _release_clear_targets(_targets_for_random_cross(), 170, "导电共鸣解放：贯穿一行一列")
+	var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index]) if slot_index < current_roster.size() else null
+	if piece != null:
+		released = await _apply_resonance_effect(piece, release_target_cell)
 	if released:
 		resonance_values[slot_index] = 0
 		if boss_hp <= 0:
@@ -1778,6 +2193,102 @@ func _release_resonance(slot_index: int) -> void:
 		is_animating_board = false
 		_set_boss_status("%s共鸣解放没有合法目标" % SLOT_ATTRIBUTES[slot_index], "共鸣")
 		_redraw_game()
+
+func _apply_resonance_effect(piece: PieceDefinition, release_target_cell: Vector2i) -> bool:
+	var params: Dictionary = piece.resonance_effect_params
+	match piece.resonance_effect_id:
+		"create_special_pieces":
+			return _release_create_special_pieces(params)
+		"clear_most_common":
+			return await _release_clear_targets(_targets_for_most_common_piece(), _param_int(params, "score", 180), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "共鸣"))
+		"cleanse_locks":
+			return _release_cleanse_locks(params)
+		"shuffle_board":
+			return _release_shuffle_board(params)
+		"clear_area":
+			var center: Vector2i = release_target_cell if release_target_cell != Vector2i(-1, -1) else Vector2i(rng.randi_range(0, BoardModel.WIDTH - 1), rng.randi_range(0, BoardModel.HEIGHT - 1))
+			return await _release_clear_targets(_square_targets(center, _param_int(params, "radius", 1)), _param_int(params, "score", 160), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "共鸣"))
+		"clear_random_cross":
+			return await _release_clear_targets(_targets_for_random_cross(), _param_int(params, "score", 170), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "共鸣"))
+		"none", "":
+			return false
+	push_warning("Unsupported resonance effect_id: %s" % piece.resonance_effect_id)
+	return false
+
+func _release_create_special_pieces(params: Dictionary) -> bool:
+	var candidates: Array = []
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			var pos: Vector2i = Vector2i(x, y)
+			var cell: Dictionary = board.get_cell(pos)
+			if String(cell["special_effect_id"]).is_empty() and int(cell["locked_turns"]) <= 0:
+				candidates.append(pos)
+	if candidates.is_empty():
+		return false
+	candidates.shuffle()
+	var count: int = min(_param_int(params, "count", 2), candidates.size())
+	for i in range(count):
+		var pos: Vector2i = candidates[i]
+		var cell: Dictionary = board.get_cell(pos)
+		cell["special_effect_id"] = _param_text(params, "special_effect_id", "stripe")
+		cell["special_direction"] = "horizontal" if rng.randi_range(0, 1) == 0 else "vertical"
+		board.set_cell(pos, cell)
+	_add_score(_param_int(params, "score", 120))
+	_set_boss_status(_param_text(params, "status", "共鸣解放：生成了特殊团子"), _param_text(params, "avatar", "共鸣"))
+	_redraw_game()
+	return true
+
+func _release_cleanse_locks(params: Dictionary) -> bool:
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			board.cells[y][x]["locked_turns"] = 0
+	suppress_next_enemy_effect = bool(params.get("suppress_next_enemy", true))
+	_add_score(_param_int(params, "score", 100))
+	_set_boss_status(_param_text(params, "status", "共鸣解放：解除锁定"), _param_text(params, "avatar", "共鸣"))
+	_redraw_game()
+	return true
+
+func _release_shuffle_board(params: Dictionary) -> bool:
+	var piece_ids: Array = []
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			piece_ids.append(String(board.cells[y][x]["piece_id"]))
+	piece_ids.shuffle()
+	var index: int = 0
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			board.cells[y][x]["piece_id"] = piece_ids[index]
+			index += 1
+	_add_score(_param_int(params, "score", 120))
+	_set_boss_status(_param_text(params, "status", "共鸣解放：重排棋盘"), _param_text(params, "avatar", "共鸣"))
+	_redraw_game()
+	return true
+
+func _param_int(params: Dictionary, key: String, default_value: int) -> int:
+	var value: Variant = params.get(key, default_value)
+	if value is int:
+		return value
+	if value is float:
+		return roundi(value)
+	var text: String = String(value)
+	if text.is_valid_int():
+		return int(text)
+	if text.is_valid_float():
+		return roundi(float(text))
+	return default_value
+
+func _param_float(params: Dictionary, key: String, default_value: float) -> float:
+	var value: Variant = params.get(key, default_value)
+	if value is int or value is float:
+		return float(value)
+	var text: String = String(value)
+	if text.is_valid_float():
+		return float(text)
+	return default_value
+
+func _param_text(params: Dictionary, key: String, default_value: String) -> String:
+	var value: String = String(params.get(key, default_value))
+	return default_value if value.is_empty() else value
 
 func _release_diffraction() -> bool:
 	var candidates: Array = []
@@ -1828,7 +2339,7 @@ func _release_aero() -> bool:
 	_redraw_game()
 	return true
 
-func _release_clear_targets(targets: Array, base_score: int, status_text: String) -> bool:
+func _release_clear_targets(targets: Array, base_score: int, status_text: String, avatar_text: String = "共鸣") -> bool:
 	targets = _unique_in_bounds_targets(targets)
 	if targets.is_empty():
 		return false
@@ -1843,7 +2354,7 @@ func _release_clear_targets(targets: Array, base_score: int, status_text: String
 	_add_score(base_score + targets.size() * 8)
 	await _collapse_refill_and_animate()
 	await _resolve_cascades()
-	_set_boss_status(status_text, "共鸣")
+	_set_boss_status(status_text, avatar_text)
 	return true
 
 func _targets_for_most_common_piece() -> Array:
@@ -1988,6 +2499,7 @@ func _build_cheat_panel() -> void:
 	box.add_child(boss_row)
 	boss_row.add_child(_make_button("大魔王锁3格", Callable(self, "_cheat_boss_lock_three")))
 	boss_row.add_child(_make_button("大魔王断Combo", Callable(self, "_cheat_boss_break_combo")))
+	boss_row.add_child(_make_button("Boss血量清0", Callable(self, "_cheat_boss_kill")))
 	boss_row.add_child(_make_button("随机干扰", Callable(self, "_trigger_enemy_effect")))
 	_update_cheat_panel_from_selection()
 
@@ -2071,6 +2583,14 @@ func _cheat_boss_break_combo() -> void:
 	_set_boss_status("作弊器：团子大魔王打断了 Combo", "怒")
 	_redraw_game()
 
+func _cheat_boss_kill() -> void:
+	if board == null or is_animating_board or boss_hp <= 0:
+		return
+	boss_hp = 0
+	_update_boss_hp_ui()
+	_set_boss_status("作弊器：Boss 血量已清 0", "胜利")
+	_finish_battle()
+
 func _update_cheat_panel_from_selection() -> void:
 	if cheat_panel == null or board == null:
 		return
@@ -2103,6 +2623,589 @@ func _select_option_by_metadata(option: OptionButton, value: String) -> void:
 			return
 	option.select(0)
 
+func _on_run_battle_won() -> void:
+	var node_type: String = String(current_run_node.get("type", "battle"))
+	_apply_run_heal_after_battle()
+	if node_type == "boss":
+		_advance_run_after_node()
+		return
+	var reward_items: Array = _battle_reward_for_node(current_run_node)
+	_show_run_reward("战斗胜利", reward_items)
+
+func _on_run_battle_lost() -> void:
+	run_state["lives"] = max(0, int(run_state.get("lives", RUN_MAX_LIVES)) - 1)
+	if int(run_state.get("lives", 0)) <= 0:
+		_finish_run_failed()
+		return
+	_clear_screen()
+	current_screen = "run_loss"
+	_add_title("战斗失利")
+	var label: Label = Label.new()
+	label.text = "损失 1 点生命。\n剩余生命：%d / %d" % [int(run_state.get("lives", 0)), RUN_MAX_LIVES]
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(label)
+	root.add_child(_make_button("回到路线", Callable(self, "_show_run_map")))
+
+func _battle_reward_for_node(node: Dictionary) -> Array:
+	var run_floor: int = int(node.get("floor", int(run_state.get("floor", 1))))
+	var node_type: String = String(node.get("type", "battle"))
+	var reward_items: Array = [_make_shell_reward(8 + run_floor * 2)]
+	if node_type == "elite":
+		reward_items[0] = _make_shell_reward(14 + run_floor * 3)
+		reward_items.append(_make_collectible_reward(_random_collectible("rare")))
+	elif rng.randf() <= 0.35:
+		reward_items.append(_make_collectible_reward(_random_collectible("common")))
+	return reward_items
+
+func _show_supply_node() -> void:
+	var roll: int = rng.randi_range(0, 2)
+	var reward_items: Array = []
+	if roll == 0:
+		reward_items.append(_make_life_reward(1))
+	elif roll == 1:
+		reward_items.append(_make_shell_reward(12 + int(run_state.get("floor", 1)) * 2))
+	else:
+		reward_items.append(_make_collectible_reward(_random_collectible("common")))
+	_show_run_reward("补给包", reward_items)
+
+func _show_shop_node() -> void:
+	if _run_shop_items().is_empty():
+		run_state["shop_items"] = _generate_shop_items()
+	_clear_screen()
+	current_screen = "run_shop"
+	_add_title("贝币商城")
+	var summary: Label = Label.new()
+	summary.text = "当前贝币：%d。可以连续购买多个藏品，完成后跳过商城继续探索。" % int(run_state.get("shells", 0))
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(summary)
+	var row: HBoxContainer = HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 14)
+	root.add_child(row)
+	var shop_items: Array = _run_shop_items()
+	for index in range(shop_items.size()):
+		var item: Dictionary = shop_items[index]
+		var collectible: Dictionary = _shop_item_collectible(item)
+		var price: int = int(item.get("price", _shop_price(collectible)))
+		var sold: bool = bool(item.get("sold", false))
+		var captured_index: int = index
+		var sold_text: String = "\n已售罄" if sold else ""
+		var button: Button = _make_button("%s\n%s\n价格：%d 贝币" % [
+			_collectible_name(collectible),
+			_collectible_description(collectible) + sold_text,
+			price,
+		], func() -> void:
+			_buy_shop_item(captured_index)
+		)
+		button.custom_minimum_size = Vector2(330, 190)
+		button.disabled = sold or int(run_state.get("shells", 0)) < price
+		row.add_child(button)
+	root.add_child(_make_button("跳过商城", Callable(self, "_advance_run_after_node")))
+
+func _show_event_node() -> void:
+	_clear_screen()
+	current_screen = "run_event"
+	_add_title("随机事件")
+	var info: Label = Label.new()
+	info.text = "选择一个事件结果。若事件产生奖励，会作为奖励包展示。"
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(info)
+	root.add_child(_make_button("冒险打捞：失去 1 生命，获得贝币和稀有藏品", Callable(self, "_event_danger_dive")))
+	root.add_child(_make_button("潮声祝福：恢复 1 生命", Callable(self, "_event_tide_blessing")))
+	root.add_child(_make_button("空手离开", Callable(self, "_advance_run_after_node")))
+
+func _event_danger_dive() -> void:
+	if int(run_state.get("lives", 0)) <= 1:
+		_show_run_reward("谨慎打捞", [_make_shell_reward(10)])
+		return
+	run_state["lives"] = int(run_state.get("lives", 0)) - 1
+	_show_run_reward("冒险打捞", [_make_shell_reward(18), _make_collectible_reward(_random_collectible("rare"))])
+
+func _event_tide_blessing() -> void:
+	_show_run_reward("潮声祝福", [_make_life_reward(1)])
+
+func _show_run_reward(title: String, reward_items: Array) -> void:
+	pending_run_reward_items = []
+	for item in reward_items:
+		var reward_item: Dictionary = item
+		if not reward_item.has("accepted"):
+			reward_item["accepted"] = null
+		pending_run_reward_items.append(reward_item)
+	_clear_screen()
+	current_screen = "run_reward"
+	_add_title(title)
+	var label: Label = Label.new()
+	label.text = "逐项决定是否收下奖励。"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	root.add_child(label)
+	var reward_row: HBoxContainer = HBoxContainer.new()
+	reward_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	reward_row.add_theme_constant_override("separation", 14)
+	reward_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(reward_row)
+	for index in range(pending_run_reward_items.size()):
+		var item_data: Dictionary = pending_run_reward_items[index]
+		var card: VBoxContainer = VBoxContainer.new()
+		card.alignment = BoxContainer.ALIGNMENT_CENTER
+		card.add_theme_constant_override("separation", 8)
+		card.custom_minimum_size = Vector2(300, 210)
+		reward_row.add_child(card)
+		var item_label: Label = Label.new()
+		item_label.text = _run_reward_item_text(item_data)
+		item_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		item_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+		card.add_child(item_label)
+		var state_label: Label = Label.new()
+		state_label.text = _reward_choice_state_text(item_data)
+		state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(state_label)
+		var choice_row: HBoxContainer = HBoxContainer.new()
+		choice_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		choice_row.add_theme_constant_override("separation", 8)
+		card.add_child(choice_row)
+		var captured_index: int = index
+		choice_row.add_child(_make_button("收下", func() -> void: _choose_reward_item(captured_index, true)))
+		choice_row.add_child(_make_button("丢弃", func() -> void: _choose_reward_item(captured_index, false)))
+	if _all_reward_items_chosen():
+		root.add_child(_make_button("继续探索", Callable(self, "_continue_after_reward_choices")))
+
+func _choose_reward_item(index: int, accepted: bool) -> void:
+	if index < 0 or index >= pending_run_reward_items.size():
+		return
+	pending_run_reward_items[index]["accepted"] = accepted
+	_show_run_reward("奖励确认", pending_run_reward_items)
+
+func _continue_after_reward_choices() -> void:
+	for item in pending_run_reward_items:
+		var reward_item: Dictionary = item
+		if bool(reward_item.get("accepted", false)):
+			_apply_run_reward_item(reward_item)
+	pending_run_reward_items = []
+	_advance_run_after_node()
+
+func _apply_run_reward_item(item: Dictionary) -> void:
+	match String(item.get("type", "")):
+		"shells":
+			run_state["shells"] = int(run_state.get("shells", 0)) + int(item.get("amount", 0))
+		"life":
+			run_state["lives"] = clamp(int(run_state.get("lives", RUN_MAX_LIVES)) + int(item.get("amount", 0)), 0, RUN_MAX_LIVES)
+		"collectible":
+			var collectible: Dictionary = _reward_item_collectible(item)
+			if not collectible.is_empty():
+				var collectibles: Array = _run_collectibles()
+				collectibles.append(collectible)
+				run_state["collectibles"] = collectibles
+				_mark_collectible_seen(String(collectible.get("id", "")))
+
+func _generate_shop_items() -> Array:
+	var items: Array = []
+	for i in range(3):
+		var collectible: Dictionary = _random_collectible("common")
+		items.append({
+			"collectible": collectible,
+			"price": _shop_price(collectible),
+			"sold": false,
+		})
+	return items
+
+func _run_shop_items() -> Array:
+	var items: Variant = run_state.get("shop_items", [])
+	if items is Array:
+		return items
+	return []
+
+func _shop_item_collectible(item: Dictionary) -> Dictionary:
+	var collectible: Variant = item.get("collectible", {})
+	if collectible is Dictionary:
+		return collectible
+	return {}
+
+func _buy_shop_item(index: int) -> void:
+	var shop_items: Array = _run_shop_items()
+	if index < 0 or index >= shop_items.size():
+		_show_shop_node()
+		return
+	var item: Dictionary = shop_items[index]
+	if bool(item.get("sold", false)):
+		_show_shop_node()
+		return
+	var collectible: Dictionary = _shop_item_collectible(item)
+	var price: int = int(item.get("price", _shop_price(collectible)))
+	if int(run_state.get("shells", 0)) < price:
+		_show_shop_node()
+		return
+	run_state["shells"] = int(run_state.get("shells", 0)) - price
+	var collectibles: Array = _run_collectibles()
+	collectibles.append(collectible)
+	run_state["collectibles"] = collectibles
+	_mark_collectible_seen(String(collectible.get("id", "")))
+	item["sold"] = true
+	shop_items[index] = item
+	run_state["shop_items"] = shop_items
+	_show_shop_node()
+
+func _advance_run_after_node() -> void:
+	run_state["shop_items"] = []
+	run_state["completed_nodes"] = int(run_state.get("completed_nodes", 0)) + 1
+	var current_node_id: String = String(run_state.get("current_node_id", ""))
+	var completed_node: Dictionary = _find_run_node(current_node_id)
+	if completed_node.is_empty():
+		_show_run_map()
+		return
+	_mark_run_node_completed(current_node_id)
+	if String(completed_node.get("type", "")) == "boss":
+		_start_next_floor_or_finish()
+		return
+	run_state["available_node_ids"] = _node_links(completed_node)
+	run_state["current_node_id"] = ""
+	_show_run_map()
+
+func _start_next_floor_or_finish() -> void:
+	var next_floor: int = int(run_state.get("floor", 1)) + 1
+	if next_floor > RUN_TOTAL_FLOORS:
+		_finish_run_complete()
+		return
+	run_state["floor"] = next_floor
+	_generate_floor_map(next_floor)
+	_show_run_map()
+
+func _finish_run_complete() -> void:
+	_finish_run(true)
+
+func _finish_run_failed() -> void:
+	_finish_run(false)
+
+func _finish_run(completed: bool) -> void:
+	save.high_score = max(save.high_score, score)
+	save.run_best_floor = max(save.run_best_floor, int(run_state.get("floor", 1)))
+	save.run_total_shells += int(run_state.get("shells", 0))
+	save.save()
+	_clear_screen()
+	current_screen = "run_end"
+	_add_title("探索完成" if completed else "探索结束")
+	var summary: Label = Label.new()
+	summary.text = "抵达层数：%d / %d\n分数：%d\n贝币：%d\n藏品：%d\n历史最高层：%d\n累计贝币：%d" % [
+		int(run_state.get("floor", 1)),
+		RUN_TOTAL_FLOORS,
+		score,
+		int(run_state.get("shells", 0)),
+		_run_collectibles().size(),
+		save.run_best_floor,
+		save.run_total_shells,
+	]
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(summary)
+	run_active = false
+	run_state = {}
+	current_run_node = {}
+	pending_run_reward_items = []
+	root.add_child(_make_button("再来一次探索", Callable(self, "_start_run")))
+	root.add_child(_make_button("返回主页", Callable(self, "_show_main_menu")))
+
+func _run_map_nodes() -> Array:
+	var nodes: Variant = run_state.get("map_nodes", [])
+	if nodes is Array:
+		return nodes
+	return []
+
+func _run_nodes_for_row(row_index: int) -> Array:
+	var result: Array = []
+	for node in _run_map_nodes():
+		var node_data: Dictionary = node
+		if int(node_data.get("row", -1)) == row_index:
+			result.append(node_data)
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("lane", 0)) < int(b.get("lane", 0))
+	)
+	return result
+
+func _run_node_short_label(node: Dictionary) -> String:
+	if String(node.get("type", "")) == "boss":
+		return "BOSS"
+	return "%d-%d" % [int(node.get("row", 0)) + 1, int(node.get("lane", 0)) + 1]
+
+func _run_map_node_positions(canvas_size: Vector2) -> Dictionary:
+	var positions: Dictionary = {}
+	var column_gap: float = canvas_size.x / float(RUN_MAP_ROWS + 1)
+	var lane_y: Array[float] = [
+		canvas_size.y * 0.22,
+		canvas_size.y * 0.50,
+		canvas_size.y * 0.78,
+	]
+	for node in _run_map_nodes():
+		var node_data: Dictionary = node
+		var row_index: int = int(node_data.get("row", 0))
+		var lane_index: int = int(node_data.get("lane", 0))
+		var x: float = column_gap * (float(row_index) + 0.5)
+		var y: float = canvas_size.y * 0.5
+		if String(node_data.get("type", "")) != "boss":
+			var row_nodes: Array = _run_nodes_for_row(row_index)
+			var row_count: int = max(1, row_nodes.size())
+			if row_count == 2:
+				y = canvas_size.y * (0.34 if lane_index == 0 else 0.66)
+			else:
+				y = lane_y[clamp(lane_index, 0, lane_y.size() - 1)]
+		positions[String(node_data.get("id", ""))] = Vector2(x, y)
+	return positions
+
+func _make_run_map_node_button(node: Dictionary) -> Button:
+	var node_type: String = String(node.get("type", "battle"))
+	var node_id: String = String(node.get("id", ""))
+	var available: bool = _is_run_node_available(node_id)
+	var completed: bool = bool(node.get("completed", false))
+	var button: Button = Button.new()
+	button.custom_minimum_size = Vector2(250, 96 if node_type != "boss" else 118)
+	button.text = "%s\n%s" % [_run_node_icon(node_type), _run_node_map_label(node)]
+	button.add_theme_font_size_override("font_size", 22 if node_type != "boss" else 26)
+	button.add_theme_stylebox_override("normal", _make_run_node_style(node_type, available, completed, false))
+	button.add_theme_stylebox_override("hover", _make_run_node_style(node_type, true, completed, true))
+	button.add_theme_stylebox_override("pressed", _make_run_node_style(node_type, true, completed, true))
+	button.add_theme_stylebox_override("disabled", _make_run_node_style(node_type, false, completed, false))
+	return button
+
+func _run_node_icon(node_type: String) -> String:
+	match node_type:
+		"battle":
+			return "× 作战"
+		"elite":
+			return "!! 精英作战"
+		"supply":
+			return "+ 补给"
+		"shop":
+			return "$ 商城"
+		"event":
+			return "? 不期而遇"
+		"boss":
+			return "▲ 层级首领"
+	return "· 节点"
+
+func _run_node_map_label(node: Dictionary) -> String:
+	var status: String = "DONE" if bool(node.get("completed", false)) else ("READY" if _is_run_node_available(String(node.get("id", ""))) else "LOCKED")
+	return "%s    %s" % [_run_node_short_label(node), status]
+
+func _make_run_node_style(node_type: String, available: bool, completed: bool, hover: bool) -> StyleBoxFlat:
+	var style: StyleBoxFlat = StyleBoxFlat.new()
+	var color: Color = Color(0.10, 0.12, 0.12, 0.88)
+	if node_type == "boss":
+		color = Color(0.20, 0.12, 0.11, 0.92)
+	elif node_type == "shop":
+		color = Color(0.16, 0.11, 0.24, 0.90)
+	elif node_type == "supply":
+		color = Color(0.08, 0.20, 0.20, 0.90)
+	elif node_type == "event":
+		color = Color(0.13, 0.18, 0.13, 0.90)
+	if completed:
+		color = Color(0.08, 0.16, 0.11, 0.82)
+	elif not available:
+		color = Color(color.r * 0.45, color.g * 0.45, color.b * 0.45, 0.58)
+	elif hover:
+		color = color.lightened(0.18)
+	style.bg_color = color
+	style.border_color = Color(0.95, 0.98, 0.92, 0.95) if available else Color(0.55, 0.58, 0.56, 0.45)
+	style.set_border_width_all(2 if available else 1)
+	style.corner_radius_top_left = 2
+	style.corner_radius_top_right = 2
+	style.corner_radius_bottom_left = 2
+	style.corner_radius_bottom_right = 2
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	return style
+
+func _run_row_links_text(row_index: int) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for node in _run_nodes_for_row(row_index):
+		var node_data: Dictionary = node
+		var targets: PackedStringArray = PackedStringArray()
+		for target_id in _node_links(node_data):
+			var target: Dictionary = _find_run_node(String(target_id))
+			if not target.is_empty():
+				targets.append(_run_node_short_label(target))
+		if not targets.is_empty():
+			parts.append("%s -> %s" % [_run_node_short_label(node_data), String(", ").join(targets)])
+	if parts.is_empty():
+		return ""
+	return "路线：%s" % String(" / ").join(parts)
+
+func _find_run_node(node_id: String) -> Dictionary:
+	for node in _run_map_nodes():
+		var node_data: Dictionary = node
+		if String(node_data.get("id", "")) == node_id:
+			return node_data
+	return {}
+
+func _is_run_node_available(node_id: String) -> bool:
+	var available_ids: Variant = run_state.get("available_node_ids", [])
+	return available_ids is Array and available_ids.has(node_id)
+
+func _run_available_node_ids() -> Array:
+	var available_ids: Variant = run_state.get("available_node_ids", [])
+	if available_ids is Array:
+		return available_ids
+	return []
+
+func _mark_run_node_completed(node_id: String) -> void:
+	var nodes: Array = _run_map_nodes()
+	for index in range(nodes.size()):
+		var node_data: Dictionary = nodes[index]
+		if String(node_data.get("id", "")) == node_id:
+			node_data["completed"] = true
+			nodes[index] = node_data
+			break
+	run_state["map_nodes"] = nodes
+
+func _node_links(node: Dictionary) -> Array:
+	var links: Variant = node.get("links", [])
+	if links is Array:
+		return links.duplicate()
+	return []
+
+func _run_collectibles() -> Array:
+	var collectibles: Variant = run_state.get("collectibles", [])
+	if collectibles is Array:
+		return collectibles.duplicate()
+	return []
+
+func _make_shell_reward(amount: int) -> Dictionary:
+	return {
+		"type": "shells",
+		"amount": amount,
+		"label": "贝币 +%d" % amount,
+		"description": "用于在商城购买藏品。",
+	}
+
+func _make_life_reward(amount: int) -> Dictionary:
+	return {
+		"type": "life",
+		"amount": amount,
+		"label": "生命 +%d" % amount,
+		"description": "恢复探索生命，不能超过上限。",
+	}
+
+func _make_collectible_reward(collectible: Dictionary) -> Dictionary:
+	return {
+		"type": "collectible",
+		"collectible": collectible,
+		"label": "藏品：%s" % _collectible_name(collectible),
+		"description": "%s\n%s" % [
+			String(collectible.get("rarity", "common")),
+			_collectible_description(collectible),
+		],
+	}
+
+func _reward_item_collectible(item: Dictionary) -> Dictionary:
+	var collectible: Variant = item.get("collectible", {})
+	if collectible is Dictionary:
+		return collectible
+	return {}
+
+func _run_reward_item_text(item: Dictionary) -> String:
+	return "%s\n%s" % [String(item.get("label", "奖励")), String(item.get("description", ""))]
+
+func _reward_choice_state_text(item: Dictionary) -> String:
+	var accepted: Variant = item.get("accepted", null)
+	if accepted == null:
+		return "未选择"
+	return "已收下" if bool(accepted) else "已丢弃"
+
+func _all_reward_items_chosen() -> bool:
+	if pending_run_reward_items.is_empty():
+		return true
+	for item in pending_run_reward_items:
+		var reward_item: Dictionary = item
+		if reward_item.get("accepted", null) == null:
+			return false
+	return true
+
+func _random_collectible(min_rarity: String = "common") -> Dictionary:
+	var candidates: Array = catalog.get_collectibles_by_min_rarity(min_rarity)
+	if candidates.is_empty():
+		candidates = catalog.get_collectibles_by_min_rarity("common")
+	if candidates.is_empty():
+		return {}
+	var total_weight: int = 0
+	for collectible in candidates:
+		total_weight += max(1, collectible.pool_weight)
+	var roll: int = rng.randi_range(1, max(1, total_weight))
+	var running: int = 0
+	for collectible in candidates:
+		running += max(1, collectible.pool_weight)
+		if roll <= running:
+			return _collectible_to_run_data(collectible)
+	return _collectible_to_run_data(candidates[0])
+
+func _rarity_rank(rarity: String) -> int:
+	return catalog.rarity_rank(rarity)
+
+func _collectible_total(effect_id: String) -> float:
+	if not run_active:
+		return 0.0
+	var total: float = 0.0
+	for collectible in _run_collectibles():
+		var data: Dictionary = collectible
+		if _collectible_effect_id(data) == effect_id:
+			var params: Dictionary = _collectible_effect_params(data)
+			total += _param_float(params, "value", float(data.get("value", 0.0)))
+	return total
+
+func _shop_price(collectible: Dictionary) -> int:
+	var base_price: int = int(collectible.get("shop_price", 0))
+	if base_price <= 0:
+		match String(collectible.get("rarity", "common")):
+			"rare":
+				base_price = 16
+			"epic":
+				base_price = 24
+			_:
+				base_price = 10
+	var discount: float = clamp(_collectible_total("shop_discount"), 0.0, 0.75)
+	return max(1, roundi(float(base_price) * (1.0 - discount)))
+
+func _apply_run_heal_after_battle() -> void:
+	var heal: int = int(_collectible_total("heal_after_battle"))
+	if heal <= 0:
+		return
+	run_state["lives"] = clamp(int(run_state.get("lives", RUN_MAX_LIVES)) + heal, 0, RUN_MAX_LIVES)
+
+func _mark_collectible_seen(collectible_id: String) -> void:
+	if collectible_id.is_empty() or save.seen_collectible_ids.has(collectible_id):
+		return
+	save.seen_collectible_ids.append(collectible_id)
+
+func _collectible_to_run_data(collectible: Resource) -> Dictionary:
+	return {
+		"id": collectible.id,
+		"name": collectible.display_name,
+		"description": collectible.description,
+		"rarity": collectible.rarity,
+		"effect_id": collectible.effect_id,
+		"effect": collectible.effect_id,
+		"effect_params": collectible.effect_params.duplicate(true),
+		"value": float(collectible.effect_params.get("value", 0.0)),
+		"shop_price": collectible.shop_price,
+		"pool_weight": collectible.pool_weight,
+		"max_stack": collectible.max_stack,
+	}
+
+func _collectible_name(collectible: Dictionary) -> String:
+	var collectible_name: String = String(collectible.get("name", ""))
+	return collectible_name if not collectible_name.is_empty() else String(collectible.get("display_name", "藏品"))
+
+func _collectible_description(collectible: Dictionary) -> String:
+	return String(collectible.get("description", ""))
+
+func _collectible_effect_id(collectible: Dictionary) -> String:
+	var effect_id: String = String(collectible.get("effect_id", ""))
+	return effect_id if not effect_id.is_empty() else String(collectible.get("effect", ""))
+
+func _collectible_effect_params(collectible: Dictionary) -> Dictionary:
+	var params: Variant = collectible.get("effect_params", {})
+	if params is Dictionary:
+		return params
+	return {"value": float(collectible.get("value", 0.0))}
+
 func _show_pause() -> void:
 	_clear_screen()
 	_add_title("暂停")
@@ -2118,7 +3221,26 @@ func _show_pause() -> void:
 	root.add_child(_make_button("重新开始", Callable(self, "_start_game")))
 	root.add_child(_make_button("返回主页", Callable(self, "_show_main_menu")))
 
+func _show_run_pause() -> void:
+	_clear_screen()
+	current_screen = "run_pause"
+	_add_title("设置")
+	root.add_child(_make_slider_row("音效", save.sfx_volume, func(value: float) -> void:
+		save.sfx_volume = value
+		save.save()
+	))
+	root.add_child(_make_slider_row("音乐", save.music_volume, func(value: float) -> void:
+		save.music_volume = value
+		save.save()
+	))
+	root.add_child(_make_button("继续探索", Callable(self, "_show_run_map")))
+	root.add_child(_make_button("放弃探索", Callable(self, "_finish_run_failed")))
+	root.add_child(_make_button("返回主页", Callable(self, "_show_main_menu")))
+
 func _end_game() -> void:
+	if run_active:
+		_on_run_battle_lost()
+		return
 	save.high_score = max(save.high_score, score)
 	save.save()
 	_clear_screen()

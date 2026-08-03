@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://1lkdlk1dpmm"
+
+[deps]
+
+files=["res://data/tables/bosses.name.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.description.translation"]
+
+source_file="res://data/tables/bosses.csv"
+dest_files=["res://data/tables/bosses.name.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.description.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
