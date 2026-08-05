@@ -247,6 +247,12 @@ func _show_main_menu() -> void:
 	actions.add_child(_make_menu_button("开始探索", Callable(self, "_start_run")))
 	actions.add_child(_make_menu_button("开始游戏", Callable(self, "_start_game")))
 	actions.add_child(_make_menu_button("设置", func() -> void: _show_settings(Callable(self, "_show_main_menu"))))
+	actions.add_child(_make_menu_button("退出游戏", Callable(self, "_quit_game")))
+
+func _quit_game() -> void:
+	if save != null:
+		save.save()
+	get_tree().quit()
 
 func _show_roster_select() -> void:
 	_clear_screen()
@@ -834,10 +840,10 @@ func _show_run_map() -> void:
 	top_bar.add_theme_constant_override("separation", 12)
 	top_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(top_bar)
-	var left_spacer: Control = Control.new()
-	left_spacer.custom_minimum_size = Vector2(160, 1)
-	left_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top_bar.add_child(left_spacer)
+	var bag_button: Button = _make_button("藏品背包", Callable(self, "_show_run_collectible_bag"))
+	bag_button.custom_minimum_size = Vector2(160, 60)
+	bag_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	top_bar.add_child(bag_button)
 	var summary: Label = Label.new()
 	summary.text = "层数：%d / %d    生命：%d / %d    贝币：%d    藏品：%d    分数：%d" % [
 		int(run_state.get("floor", 1)),
@@ -2739,36 +2745,54 @@ func _show_run_reward(title: String, reward_items: Array) -> void:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	root.add_child(label)
-	var reward_row: HBoxContainer = HBoxContainer.new()
-	reward_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	reward_row.add_theme_constant_override("separation", 14)
-	reward_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_child(reward_row)
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var reward_grid: GridContainer = GridContainer.new()
+	reward_grid.columns = max(1, min(pending_run_reward_items.size(), 2 if viewport_size.x < 1180.0 else 3))
+	reward_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	reward_grid.add_theme_constant_override("h_separation", 14)
+	reward_grid.add_theme_constant_override("v_separation", 14)
+	root.add_child(reward_grid)
+	var card_width: float = floor(clamp((viewport_size.x - 120.0) / max(1.0, float(reward_grid.columns)), 300.0, 420.0))
 	for index in range(pending_run_reward_items.size()):
 		var item_data: Dictionary = pending_run_reward_items[index]
 		var card: VBoxContainer = VBoxContainer.new()
 		card.alignment = BoxContainer.ALIGNMENT_CENTER
 		card.add_theme_constant_override("separation", 8)
-		card.custom_minimum_size = Vector2(300, 210)
-		reward_row.add_child(card)
+		card.custom_minimum_size = Vector2(card_width, 250)
+		reward_grid.add_child(card)
 		var item_label: Label = Label.new()
 		item_label.text = _run_reward_item_text(item_data)
 		item_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		item_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		item_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+		item_label.custom_minimum_size = Vector2(card_width, 130)
+		item_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.add_child(item_label)
 		var state_label: Label = Label.new()
 		state_label.text = _reward_choice_state_text(item_data)
 		state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		state_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		state_label.custom_minimum_size = Vector2(card_width, 32)
+		state_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.add_child(state_label)
 		var choice_row: HBoxContainer = HBoxContainer.new()
 		choice_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		choice_row.add_theme_constant_override("separation", 8)
+		choice_row.custom_minimum_size = Vector2(card_width, 56)
+		choice_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.add_child(choice_row)
 		var captured_index: int = index
-		choice_row.add_child(_make_button("收下", func() -> void: _choose_reward_item(captured_index, true)))
-		choice_row.add_child(_make_button("丢弃", func() -> void: _choose_reward_item(captured_index, false)))
+		choice_row.add_child(_make_reward_choice_button("收下", func() -> void: _choose_reward_item(captured_index, true)))
+		choice_row.add_child(_make_reward_choice_button("丢弃", func() -> void: _choose_reward_item(captured_index, false)))
 	if _all_reward_items_chosen():
 		root.add_child(_make_button("继续探索", Callable(self, "_continue_after_reward_choices")))
+
+func _make_reward_choice_button(text: String, callback: Callable) -> Button:
+	var button: Button = _make_button(text, callback)
+	button.custom_minimum_size = Vector2(128, 56)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_font_size_override("font_size", 22)
+	return button
 
 func _choose_reward_item(index: int, accepted: bool) -> void:
 	if index < 0 or index >= pending_run_reward_items.size():
@@ -3067,6 +3091,161 @@ func _run_collectibles() -> Array:
 	if collectibles is Array:
 		return collectibles.duplicate()
 	return []
+
+func _show_run_collectible_bag(selected_index: int = -1) -> void:
+	_clear_screen()
+	current_screen = "run_collectible_bag"
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var margin_x: int = roundi(clamp(viewport_size.x * 0.02, 16.0, 36.0))
+	var margin_y: int = roundi(clamp(viewport_size.y * 0.02, 12.0, 28.0))
+	_set_page_margins(margin_x, margin_y, margin_x, margin_y)
+	root.add_theme_constant_override("separation", 12)
+	root.alignment = BoxContainer.ALIGNMENT_CENTER
+	_add_title("藏品背包")
+	var layout: HBoxContainer = HBoxContainer.new()
+	layout.alignment = BoxContainer.ALIGNMENT_CENTER
+	layout.add_theme_constant_override("separation", roundi(clamp(viewport_size.x * 0.02, 14.0, 32.0)))
+	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(layout)
+	var list_panel: PanelContainer = PanelContainer.new()
+	list_panel.custom_minimum_size = Vector2(clamp(viewport_size.x * 0.56, 380.0, 1040.0), 0)
+	list_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_panel.size_flags_stretch_ratio = 1.55
+	layout.add_child(list_panel)
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_panel.add_child(scroll)
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 2 if viewport_size.x < 1200.0 else 3
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	scroll.add_child(grid)
+	var collectibles: Array = _run_collectibles()
+	if collectibles.is_empty():
+		var empty_label: Label = Label.new()
+		empty_label.text = "暂无藏品"
+		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		empty_label.custom_minimum_size = Vector2(320, 160)
+		empty_label.add_theme_font_size_override("font_size", 28)
+		grid.add_child(empty_label)
+	else:
+		for index in range(collectibles.size()):
+			var collectible: Dictionary = collectibles[index]
+			var captured_index: int = index
+			grid.add_child(_make_collectible_bag_card(collectible, index == selected_index, func() -> void:
+				_show_run_collectible_bag(captured_index)
+			))
+	var side_panel: VBoxContainer = VBoxContainer.new()
+	side_panel.alignment = BoxContainer.ALIGNMENT_CENTER
+	side_panel.add_theme_constant_override("separation", 14)
+	side_panel.custom_minimum_size = Vector2(clamp(viewport_size.x * 0.30, 300.0, 560.0), 0)
+	side_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side_panel.size_flags_stretch_ratio = 0.9
+	layout.add_child(side_panel)
+	var detail_label: Label = Label.new()
+	detail_label.text = _collectible_detail_text(collectibles[selected_index]) if selected_index >= 0 and selected_index < collectibles.size() else "选择左侧藏品查看效果。"
+	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	detail_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	detail_label.add_theme_font_size_override("font_size", roundi(clamp(viewport_size.y * 0.034, 18.0, 26.0)))
+	detail_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side_panel.add_child(detail_label)
+	var back_button: Button = _make_button("返回路线", Callable(self, "_show_run_map"))
+	back_button.custom_minimum_size = Vector2(0, 68)
+	side_panel.add_child(back_button)
+
+func _make_collectible_bag_card(collectible: Dictionary, active: bool, callback: Callable) -> Button:
+	var button: Button = Button.new()
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var card_size: float = floor(clamp(min(viewport_size.x / 1920.0, viewport_size.y / 1080.0) * 230.0, 140.0, 230.0))
+	button.custom_minimum_size = Vector2(card_size, card_size)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.text = ""
+	button.pressed.connect(callback)
+	_apply_collectible_button_style(button, str(collectible.get("rarity", "common")), active)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 10
+	box.offset_top = 10
+	box.offset_right = -10
+	box.offset_bottom = -10
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 8)
+	button.add_child(box)
+	var name_label: Label = _make_piece_ui_label(_collectible_name(collectible), max(18, int(card_size * 0.13)))
+	name_label.custom_minimum_size = Vector2(0, card_size * 0.44)
+	box.add_child(name_label)
+	var rarity_label: Label = _make_piece_ui_label(str(collectible.get("rarity", "common")), max(14, int(card_size * 0.085)))
+	rarity_label.custom_minimum_size = Vector2(0, card_size * 0.20)
+	box.add_child(rarity_label)
+	var effect_label: Label = _make_piece_ui_label(_collectible_effect_id(collectible), max(12, int(card_size * 0.075)))
+	effect_label.custom_minimum_size = Vector2(0, card_size * 0.20)
+	box.add_child(effect_label)
+	return button
+
+func _apply_collectible_button_style(button: Button, rarity: String, active: bool = false) -> void:
+	var bg_color: Color = Color(0.12, 0.14, 0.15, 0.92)
+	var border_color: Color = Color(0.78, 0.82, 0.76, 0.55)
+	match rarity:
+		"rare":
+			bg_color = Color(0.08, 0.18, 0.22, 0.94)
+			border_color = Color(0.40, 0.88, 1.0, 0.70)
+		"epic":
+			bg_color = Color(0.20, 0.12, 0.24, 0.94)
+			border_color = Color(0.92, 0.62, 1.0, 0.72)
+		_:
+			bg_color = Color(0.13, 0.16, 0.14, 0.92)
+			border_color = Color(0.78, 0.88, 0.68, 0.58)
+	if active:
+		border_color.a = 0.98
+	var hover_bg: Color = bg_color.lightened(0.12)
+	var pressed_bg: Color = bg_color.darkened(0.10)
+	var border_width: int = 3 if active else 1
+	button.add_theme_stylebox_override("normal", _make_collectible_button_stylebox(bg_color, border_color, border_width))
+	button.add_theme_stylebox_override("hover", _make_collectible_button_stylebox(hover_bg, border_color, border_width))
+	button.add_theme_stylebox_override("pressed", _make_collectible_button_stylebox(pressed_bg, border_color, border_width))
+	button.add_theme_stylebox_override("focus", _make_collectible_button_stylebox(hover_bg, border_color, border_width))
+
+func _make_collectible_button_stylebox(bg_color: Color, border_color: Color, border_width: int) -> StyleBoxFlat:
+	var style: StyleBoxFlat = StyleBoxFlat.new()
+	style.bg_color = bg_color
+	style.border_color = border_color
+	style.set_border_width_all(border_width)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	return style
+
+func _collectible_detail_text(collectible: Dictionary) -> String:
+	var effect_id: String = _collectible_effect_id(collectible)
+	var params: Dictionary = _collectible_effect_params(collectible)
+	var param_parts: PackedStringArray = PackedStringArray()
+	for key in params.keys():
+		param_parts.append("%s: %s" % [str(key), str(params[key])])
+	param_parts.sort()
+	var params_text: String = ", ".join(param_parts) if not param_parts.is_empty() else "无"
+	return "%s\n\n稀有度：%s\n效果：%s\n参数：%s\n\n%s" % [
+		_collectible_name(collectible),
+		str(collectible.get("rarity", "common")),
+		effect_id if not effect_id.is_empty() else "无",
+		params_text,
+		_collectible_description(collectible),
+	]
 
 func _make_shell_reward(amount: int) -> Dictionary:
 	return {
