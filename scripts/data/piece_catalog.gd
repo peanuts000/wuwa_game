@@ -126,7 +126,7 @@ func _ensure_default_collectibles() -> void:
 	_add_collectible("safe_anchor", "稳泊锚", "", "heal_after_battle", {"value": 1}, "rare", "每场战斗胜利后恢复 1 点生命。", 16, 1, 0)
 	_add_collectible("crown_conch", "冠冕海螺", "", "damage_mult", {"value": 0.35}, "epic", "对 Boss 造成的伤害提高 35%。", 24, 1, 0)
 
-func _add_piece(id: String, display_name: String, attribute: String, icon_path: String, selected_icon_path: String, resonance_cost: int, resonance_effect_id: String, resonance_effect_params: Dictionary, rarity: String, description: String, unlocked_by_default: bool, sort_order: int) -> void:
+func _add_piece(id: String, display_name: String, attribute: String, icon_path: String, selected_icon_path: String, resonance_cost: int, resonance_effect_id: String, resonance_effect_params: Dictionary, rarity: String, description: String, unlocked_by_default: bool, sort_order: int, resonance_gain_id: String = "clear_self", resonance_gain_params: Dictionary = {"amount": 1}, passive_skill_id: String = "", passive_skill_params: Dictionary = {}, attack: int = 6, resonance_gain_description: String = "消除自身团子") -> void:
 	var piece: PieceDefinition = PieceDefinition.new()
 	piece.id = id
 	piece.display_name = display_name
@@ -134,6 +134,7 @@ func _add_piece(id: String, display_name: String, attribute: String, icon_path: 
 	piece.selected_icon_texture = _load_texture(selected_icon_path)
 	piece.theme_color = _color_for_attribute(attribute)
 	piece.multiplier = 1.0
+	piece.attack = max(0, attack)
 	piece.rarity = rarity
 	piece.description = description
 	piece.default_special_effect_id = ""
@@ -142,6 +143,11 @@ func _add_piece(id: String, display_name: String, attribute: String, icon_path: 
 	piece.resonance_cost = resonance_cost
 	piece.resonance_effect_id = resonance_effect_id
 	piece.resonance_effect_params = resonance_effect_params
+	piece.resonance_gain_id = resonance_gain_id
+	piece.resonance_gain_params = resonance_gain_params
+	piece.resonance_gain_description = resonance_gain_description
+	piece.passive_skill_id = passive_skill_id
+	piece.passive_skill_params = passive_skill_params
 	piece.sort_order = sort_order
 	pieces[id] = piece
 
@@ -157,11 +163,12 @@ func _add_effect(id: String, display_name: String, effect_type: String, radius: 
 	effect.marker_color = marker_color
 	effects[id] = effect
 
-func _add_boss(id: String, display_name: String, max_hp: int, texture_path: String, skill_effect_id: String, skill_effect_params: Dictionary, skill_interval: int, skill_chance: float, description: String) -> void:
+func _add_boss(id: String, display_name: String, max_hp: int, texture_path: String, skill_effect_id: String, skill_effect_params: Dictionary, skill_interval: int, skill_chance: float, description: String, defense: int = 20) -> void:
 	var boss: Resource = BossDefinitionScript.new()
 	boss.id = id
 	boss.display_name = display_name
 	boss.max_hp = max_hp
+	boss.defense = max(0, defense)
 	boss.texture = _load_texture(texture_path)
 	boss.skill_effect_id = skill_effect_id
 	boss.skill_effect_params = skill_effect_params
@@ -222,7 +229,13 @@ func _load_piece_table() -> void:
 			String(row.get("rarity", "common")),
 			String(row.get("description", "")),
 			_parse_bool(String(row.get("unlocked_by_default", "true")), true),
-			_parse_int(row.get("sort_order", "0"), 0)
+			_parse_int(row.get("sort_order", "0"), 0),
+			String(row.get("resonance_gain_id", "clear_self")),
+			_parse_json_object(String(row.get("resonance_gain_params", "{\"amount\":1}"))),
+			String(row.get("passive_skill_id", "")),
+			_parse_json_object(String(row.get("passive_skill_params", "{}"))),
+			max(0, _parse_int(row.get("attack", "6"), 6)),
+			String(row.get("resonance_gain_description", "消除自身团子"))
 		)
 
 func _load_boss_table() -> void:
@@ -239,7 +252,8 @@ func _load_boss_table() -> void:
 			_parse_json_object(String(row.get("skill_effect_params", ""))),
 			max(1, _parse_int(row.get("skill_interval", "3"), 3)),
 			clamp(_parse_float(row.get("skill_chance", "0.3"), 0.3), 0.0, 1.0),
-			String(row.get("description", ""))
+			String(row.get("description", "")),
+			max(0, _parse_int(row.get("defense", "20"), 20))
 		)
 
 func _load_collectible_table() -> void:

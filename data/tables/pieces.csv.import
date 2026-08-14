@@ -1,19 +1,11 @@
 [remap]
 
-importer="csv_translation"
-type="Translation"
+importer="keep"
+type=""
 uid="uid://d1d37d7sn1o7t"
 
 [deps]
 
-files=["res://data/tables/pieces.name.translation", "res://data/tables/pieces.attribute.translation", "res://data/tables/pieces.normal.translation", "res://data/tables/pieces.clicked.translation", "res://data/tables/pieces.resonance.translation", "res://data/tables/pieces.resonance.translation", "res://data/tables/pieces.resonance.translation", "res://data/tables/pieces.rarity.translation", "res://data/tables/pieces.description.translation", "res://data/tables/pieces.unlocked.translation", "res://data/tables/pieces.sort.translation"]
-
 source_file="res://data/tables/pieces.csv"
-dest_files=["res://data/tables/pieces.name.translation", "res://data/tables/pieces.attribute.translation", "res://data/tables/pieces.normal.translation", "res://data/tables/pieces.clicked.translation", "res://data/tables/pieces.resonance.translation", "res://data/tables/pieces.resonance.translation", "res://data/tables/pieces.resonance.translation", "res://data/tables/pieces.rarity.translation", "res://data/tables/pieces.description.translation", "res://data/tables/pieces.unlocked.translation", "res://data/tables/pieces.sort.translation"]
 
 [params]
-
-compress=1
-delimiter=0
-unescape_keys=false
-unescape_translations=true

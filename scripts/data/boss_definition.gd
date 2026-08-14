@@ -4,6 +4,7 @@ class_name BossDefinition
 @export var id: String = ""
 @export var display_name: String = ""
 @export var max_hp: int = 300
+@export var defense: int = 20
 @export var texture: Texture2D
 @export var skill_effect_id: String = ""
 @export var skill_effect_params: Dictionary = {}

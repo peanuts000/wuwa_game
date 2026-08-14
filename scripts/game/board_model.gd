@@ -3,6 +3,14 @@ class_name BoardModel
 
 const WIDTH := 8
 const HEIGHT := 8
+const EFFECT_LIMITS := {
+	"conductive": 6,
+	"annihilation": 6,
+	"explosive": 10,
+	"photo": 10,
+	"frost": 3,
+	"aero": 3,
+}
 
 var catalog: PieceCatalog
 var roster_ids: PackedStringArray
@@ -31,6 +39,37 @@ func swap(a: Vector2i, b: Vector2i) -> void:
 func are_adjacent(a: Vector2i, b: Vector2i) -> bool:
 	return abs(a.x - b.x) + abs(a.y - b.y) == 1
 
+func is_immovable(pos: Vector2i) -> bool:
+	if not in_bounds(pos) or get_cell(pos) == null:
+		return true
+	var cell: Dictionary = get_cell(pos)
+	return int(cell.get("locked_turns", 0)) > 0 or effect_stacks(cell, "annihilation") >= 6 or effect_stacks(cell, "frost") >= 3
+
+func effect_stacks(cell: Dictionary, effect_id: String) -> int:
+	var effects: Dictionary = cell.get("effects", {})
+	return int(effects.get(effect_id, 0))
+
+func set_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
+	if not in_bounds(pos) or get_cell(pos) == null or not EFFECT_LIMITS.has(effect_id):
+		return 0
+	var cell: Dictionary = get_cell(pos)
+	var effects: Dictionary = cell.get("effects", {}).duplicate(true)
+	var value: int = clamp(amount, 0, int(EFFECT_LIMITS[effect_id]))
+	if value <= 0:
+		effects.erase(effect_id)
+	else:
+		effects[effect_id] = value
+	cell["effects"] = effects
+	set_cell(pos, cell)
+	return value
+
+func add_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
+	var cell: Dictionary = get_cell(pos) if in_bounds(pos) else {}
+	return set_effect_stacks(pos, effect_id, effect_stacks(cell, effect_id) + amount)
+
+func can_match_cell(pos: Vector2i) -> bool:
+	return in_bounds(pos) and get_cell(pos) != null and effect_stacks(get_cell(pos), "annihilation") < 6
+
 func in_bounds(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < WIDTH and pos.y >= 0 and pos.y < HEIGHT
 
@@ -40,6 +79,12 @@ func find_matches() -> Array:
 		var run: Array = []
 		var last_id: String = ""
 		for x in range(WIDTH):
+			if not can_match_cell(Vector2i(x, y)):
+				if run.size() >= 3:
+					groups.append(_make_group(run, Vector2i(1, 0)))
+				run = []
+				last_id = ""
+				continue
 			var id: String = String(cells[y][x]["piece_id"])
 			if id == last_id:
 				run.append(Vector2i(x, y))
@@ -54,6 +99,12 @@ func find_matches() -> Array:
 		var run: Array = []
 		var last_id: String = ""
 		for y in range(HEIGHT):
+			if not can_match_cell(Vector2i(x, y)):
+				if run.size() >= 3:
+					groups.append(_make_group(run, Vector2i(0, 1)))
+				run = []
+				last_id = ""
+				continue
 			var id: String = String(cells[y][x]["piece_id"])
 			if id == last_id:
 				run.append(Vector2i(x, y))
@@ -72,7 +123,7 @@ func has_possible_move() -> bool:
 			var pos: Vector2i = Vector2i(x, y)
 			for delta in [Vector2i.RIGHT, Vector2i.DOWN]:
 				var other: Vector2i = pos + delta
-				if not in_bounds(other):
+				if not in_bounds(other) or is_immovable(pos) or is_immovable(other):
 					continue
 				swap(pos, other)
 				var ok: bool = not find_matches().is_empty()
@@ -173,6 +224,7 @@ func _new_cell(piece_id: String) -> Dictionary:
 		"special_effect_id": "",
 		"special_direction": "horizontal",
 		"locked_turns": 0,
+		"effects": {},
 	}
 
 func _random_piece_id() -> String:

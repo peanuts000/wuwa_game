@@ -21,4 +21,3 @@
 - 棋盘格只保存 `piece_id`、`special_effect_id` 和状态标记。
 - UI、计分、结算统计都通过 `PieceCatalog` 查询资源定义。
 - 核心棋盘逻辑不要硬编码具体团子名称。
-

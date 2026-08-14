@@ -1,2 +1,2 @@
-﻿id,name,hp,texture,skill_effect_id,skill_effect_params,skill_interval,skill_chance,description
-tuanzi_demon_king,团子大魔王,300,,boss_random_interference,"{""lock_large"":3,""lock_small"":1,""lock_resonance"":10,""break_resonance"":6,""small_resonance"":5}",3,0.30,默认大魔王。会随机锁格或打断 Combo。
+﻿id,name,hp,texture,skill_effect_id,skill_effect_params,skill_interval,skill_chance,description,defense
+tuanzi_demon_king,团子大魔王,300,,boss_random_interference,"{""lock_large"":3,""lock_small"":1,""lock_resonance"":10,""break_resonance"":6,""small_resonance"":5}",3,0.30,默认大魔王。会随机锁格或打断 Combo。,20

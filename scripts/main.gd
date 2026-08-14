@@ -3,29 +3,173 @@ extends Control
 const BoardModelScript := preload("res://scripts/game/board_model.gd")
 const SaveManagerScript := preload("res://scripts/game/save_manager.gd")
 const RunMapCanvasScript := preload("res://scripts/ui/run_map_canvas.gd")
+const COLETTA_CRYSTAL_LEFT := "res://assets/ui/coletta_components/T_NorCrystal1.png"
+const COLETTA_CRYSTAL_RIGHT := "res://assets/ui/coletta_components/T_NorCrystal2.png"
+const COLETTA_CRYSTAL_CORE_LEFT := "res://assets/ui/coletta_components/T_NorCrystalMid1.png"
+const COLETTA_CRYSTAL_CORE_RIGHT := "res://assets/ui/coletta_components/T_NorCrystalMid2.png"
+const COLETTA_ICE_FRAME := "res://assets/ui/coletta_components/T_NorIceFrameMid.png"
+const COLETTA_ICE_FRAME_RED := "res://assets/ui/coletta_components/T_NorIceFrameRed.png"
+const COLETTA_RESONANCE_WAVE_TEXTURE := "res://assets/ui/coletta_resonance_wave_generated.png"
+const COLETTA_RESONANCE_EMPTY_COMPOSITE := "res://assets/ui/coletta_resonance_empty_cutout.png"
+const COLETTA_RESONANCE_READY_COMPOSITE := "res://assets/ui/coletta_resonance_ready_original.png"
+const COLETTA_RESONANCE_REMAINING_TEXTURES := {
+	4: "res://assets/ui/coletta_resonance_ready_original.png",
+	3: "res://assets/ui/coletta_resonance_ready_gray_4.png",
+	2: "res://assets/ui/coletta_resonance_ready_gray_3_4.png",
+	1: "res://assets/ui/coletta_resonance_ready_gray_2_3_4.png",
+}
+const COLETTA_READY_CHARGES: Array[String] = [
+	"res://assets/ui/coletta_components/T_UltimateCharge1.png",
+	"res://assets/ui/coletta_components/T_UltimateCharge2.png",
+	"res://assets/ui/coletta_components/T_UltimateCharge3.png",
+	"res://assets/ui/coletta_components/T_UltimateCharge4.png",
+]
+const COLETTA_READY_CHARGE_BACKGROUNDS: Array[String] = [
+	"res://assets/ui/coletta_components/T_UltimateCharge1Bg.png",
+	"res://assets/ui/coletta_components/T_UltimateCharge2Bg.png",
+	"res://assets/ui/coletta_components/T_UltimateCharge3Bg.png",
+	"res://assets/ui/coletta_components/T_UltimateCharge4Bg.png",
+]
+const COLETTA_READY_LIGHT_BLUE := "res://assets/ui/coletta_components/T_UltimateLightBlue.png"
+const COLETTA_READY_LIGHT_BLUE_TOP := "res://assets/ui/coletta_components/T_UltimateLightBlueTop.png"
+const COLETTA_READY_LIGHT_BLUE_BOTTOM := "res://assets/ui/coletta_components/T_UltimateLightBlueBottom.png"
+const COLETTA_READY_LIGHT_PURPLE := "res://assets/ui/coletta_components/T_UltimateLightPurple.png"
+const COLETTA_READY_LIGHT_RED := "res://assets/ui/coletta_components/T_UltimateLightRed.png"
 const SLOT_ATTRIBUTES: Array[String] = ["衍射", "湮灭", "冷凝", "气动", "热熔", "导电"]
+const COLETTA_PIECE_ID := "condensation_coletta"
+const COLETTA_RESONANCE_TEXTURE_SIZE := Vector2(640.0, 106.0)
+const COLETTA_WAVE_HEIGHT_SCALE := 0.55
+const COLETTA_WAVE_BASELINE_RATIO := 0.755
+const COLETTA_WAVE_HORIZONTAL_INSET_RATIO := 0.05
+const COLETTA_WAVE_FADE_SHADER := """
+shader_type canvas_item;
+
+void fragment() {
+	float bar_index = floor(UV.x * 62.0);
+	float bar_x = (bar_index + 0.5) / 62.0;
+	float primary_wave = sin(bar_x * 12.5663706 - TIME * 3.10);
+	float secondary_wave = sin(bar_x * 25.1327412 - TIME * 4.35);
+	float motion = clamp(0.50 + primary_wave * 0.42 + secondary_wave * 0.08, 0.0, 1.0);
+	float height_scale = mix(0.68, 1.0, smoothstep(0.0, 1.0, motion));
+	float sample_y = 1.0 - (1.0 - UV.y) / height_scale;
+	if (sample_y < 0.0) {
+		COLOR = vec4(0.0);
+	} else {
+		vec4 color = texture(TEXTURE, vec2(UV.x, sample_y));
+		float opacity = mix(0.30, 1.0, smoothstep(0.08, 0.78, UV.y));
+		float brightness = mix(0.93, 1.05, motion);
+		color.rgb *= brightness;
+		color.a *= opacity;
+		COLOR = color;
+	}
+}
+"""
+const PHOEBE_PIECE_ID := "diffraction_phoebe"
+const PHOEBE_RESONANCE_TEXTURE_SIZE := Vector2(640.0, 106.0)
+const PHOEBE_FRAME_NORMAL := "res://assets/ui/phoebe_components/T_EnergyBarFeibiFrame1.png"
+const PHOEBE_FRAME_READY := "res://assets/ui/phoebe_components/T_EnergyBarFeibiFrame2.png"
+const PHOEBE_STAR_NORMAL := "res://assets/ui/phoebe_components/T_EnergyBarFeibiStar1.png"
+const PHOEBE_STAR_READY := "res://assets/ui/phoebe_components/T_EnergyBarFeibiStar2.png"
+const PHOEBE_LINE_NORMAL := "res://assets/ui/phoebe_components/T_EnergyBarFeibiYellowBar.png"
+const PHOEBE_LINE_READY := "res://assets/ui/phoebe_components/T_EnergyBarFeibiYellowBar1.png"
+const PHOEBE_CENTER_GLOW := "res://assets/ui/phoebe_components/T_EnergyBarFeibiAni2.png"
+const PHOEBE_RESONANCE_WAVE := "res://assets/ui/phoebe_resonance_wave.png"
+const PHOEBE_FRAME_RECT := Rect2(4.0, 30.0, 632.0, 76.0)
+const PHOEBE_LINE_RECT := Rect2(60.0, 66.0, 520.0, 32.0)
+const PHOEBE_STAR_RECT := Rect2(282.0, 35.0, 76.0, 68.0)
+const PHOEBE_GLOW_RECT := Rect2(182.0, -35.0, 276.0, 208.0)
+const PHOEBE_WAVE_RECT := Rect2(60.0, 25.0, 520.0, 55.0)
+const PHOEBE_GLOW_SHADER := """
+shader_type canvas_item;
+render_mode blend_add;
+
+void fragment() {
+	vec4 color = texture(TEXTURE, UV);
+	float brightness = max(color.r, max(color.g, color.b));
+	color.a *= smoothstep(0.015, 0.18, brightness);
+	COLOR = color;
+}
+"""
+const PHOEBE_WAVE_ANIMATION_SHADER := """
+shader_type canvas_item;
+
+uniform float recolor_strength = 0.0;
+uniform vec4 top_color : source_color = vec4(1.00, 0.97, 0.78, 1.0);
+uniform vec4 bottom_color : source_color = vec4(0.55, 0.62, 1.00, 1.0);
+
+void fragment() {
+	float bar_index = floor(UV.x * 62.0);
+	float bar_x = (bar_index + 0.5) / 62.0;
+	float primary_wave = sin(bar_x * 12.5663706 - TIME * 3.10);
+	float secondary_wave = sin(bar_x * 25.1327412 - TIME * 4.35);
+	float motion = clamp(0.50 + primary_wave * 0.42 + secondary_wave * 0.08, 0.0, 1.0);
+	float height_scale = mix(0.68, 1.0, smoothstep(0.0, 1.0, motion));
+	float sample_y = 1.0 - (1.0 - UV.y) / height_scale;
+	if (sample_y < 0.0) {
+		COLOR = vec4(0.0);
+	} else {
+		vec4 color = texture(TEXTURE, vec2(UV.x, sample_y));
+		vec3 ready_tint = mix(top_color.rgb, bottom_color.rgb, smoothstep(0.05, 1.0, UV.y));
+		float brightness = mix(0.93, 1.05, motion);
+		color.rgb = mix(color.rgb, ready_tint, recolor_strength) * brightness;
+		COLOR = color;
+	}
+}
+"""
+const KAKARO_PIECE_ID := "conductive_kakaro"
+const KAKARO_RESONANCE_TEXTURE_SIZE := Vector2(640.0, 106.0)
+const KAKARO_RESONANCE_EMPTY := "res://assets/ui/kakaro_resonance_empty.png"
+const KAKARO_RESONANCE_WAVE := "res://assets/ui/kakaro_resonance_wave.png"
+const KAKARO_RESONANCE_READY_WAVE := "res://assets/ui/kakaro_resonance_ready_wave.png"
+const KAKARO_RESONANCE_READY_FRAME := "res://assets/ui/kakaro_components/T_EnergyBarMorpKakaluo.png"
+const KAKARO_WAVE_RECT := Rect2(95.0, 11.0, 502.0, 45.0)
+const KAKARO_READY_WAVE_RECT := Rect2(60.0, 11.0, 523.0, 41.0)
 const RESONANCE_MAX_VALUES: Array[int] = [30, 45, 35, 40, 35, 50]
-const SWAP_ANIM_SECONDS := 0.28
-const CLEAR_ANIM_SECONDS := 0.46
-const DROP_BASE_SECONDS := 0.24
-const DROP_SECONDS_PER_ROW := 0.12
-const DROP_COLUMN_STAGGER_SECONDS := 0.035
-const DROP_SPAWN_DELAY_SECONDS := 0.10
+const SWAP_ANIM_SECONDS := 0.21
+const CLEAR_ANIM_SECONDS := 0.34
+const ELECTROMAGNETIC_MOVE_SECONDS := 0.40
+const SPECIAL_CREATE_SECONDS := 0.13
+const DROP_BASE_SECONDS := 0.18
+const DROP_SECONDS_PER_ROW := 0.085
+const DROP_COLUMN_STAGGER_SECONDS := 0.022
+const DROP_SPAWN_DELAY_SECONDS := 0.06
 const DROP_SPAWN_EXTRA_ROWS := 2
 const DROP_LANDING_OVERSHOOT := 9.0
-const DROP_SETTLE_SECONDS := 0.10
-const POST_CLEAR_PAUSE_SECONDS := 0.12
-const POST_DROP_PAUSE_SECONDS := 0.12
+const DROP_SETTLE_SECONDS := 0.075
+const POST_CLEAR_PAUSE_SECONDS := 0.02
+const POST_DROP_PAUSE_SECONDS := 0.03
+const CLEAR_DROP_OVERLAP_RATIO := 0.58
 const ROSTER_SLOT_SIZE := 156.0
 const MAIN_MENU_ROSTER_SLOT_SIZE := 190.0
 const PIECE_CARD_SIZE := 260.0
 const BATTLE_ROSTER_SLOT_SIZE := 156.0
+const BATTLE_ROSTER_HIT_PADDING := 10.0
 const BOSS_MAX_HP := 300
 const BOSS_SEGMENTS := 3
-const BOSS_DAMAGE_PER_PIECE := 6
-const ATTACK_FLY_SECONDS := 0.42
-const ATTACK_FLY_STAGGER_SECONDS := 0.025
+const BOSS_INFINITE_HP_TEXT := "∞ / ∞"
+const ATTACK_FLY_SECONDS := 0.32
+const ATTACK_FLY_STAGGER_SECONDS := 0.016
 const RUN_MAX_LIVES := 3
+const RUN_MAX_ACTIONS := 30
+const RUN_BATTLE_ACTION_RECOVERY := 5
+const EFFECT_EXPLOSIVE_BOSS_DAMAGE := 30
+const EFFECT_PHOTO_DAMAGE_PER_STACK := 5
+const EFFECT_LIMITS := {
+	"conductive": 6,
+	"annihilation": 6,
+	"explosive": 10,
+	"photo": 10,
+	"frost": 3,
+	"aero": 3,
+}
+const EFFECT_NAMES := {
+	"conductive": "电磁",
+	"annihilation": "湮灭",
+	"explosive": "聚爆",
+	"photo": "光燥",
+	"frost": "霜渐",
+	"aero": "风蚀",
+}
 const RUN_TOTAL_FLOORS := 5
 const RUN_MAP_ROWS := 5
 const RUN_MAP_MIN_LANES := 2
@@ -40,12 +184,23 @@ var save: SaveManager
 var board: BoardModel
 var current_boss: Resource
 var selected_cell: Vector2i = Vector2i(-1, -1)
+var coletta_targeting_slot: int = -1
+var coletta_target_orientation: String = "horizontal"
+var coletta_hovered_cell: Vector2i = Vector2i(-1, -1)
+var coletta_release_active: bool = false
+var kakaro_targeting_slot: int = -1
+var kakaro_hovered_cell: Vector2i = Vector2i(-1, -1)
+var kakaro_release_active: bool = false
+var kakaro_releases_remaining: int = 0
 var current_roster: PackedStringArray = PackedStringArray()
 var score: int = 0
 var combo: int = 0
 var max_combo: int = 0
 var boss_hp: int = BOSS_MAX_HP
 var boss_max_hp: int = BOSS_MAX_HP
+var boss_hp_infinite: bool = false
+var boss_effects: Dictionary = {}
+var boss_frozen: bool = false
 var moves_since_enemy: int = 0
 var skip_bonus_pending: bool = false
 var suppress_next_enemy_effect: bool = false
@@ -92,6 +247,11 @@ var cheat_piece_option: OptionButton
 var cheat_effect_option: OptionButton
 var cheat_direction_option: OptionButton
 var cheat_lock_spin: SpinBox
+var cheat_effect_stack_option: OptionButton
+var cheat_effect_stack_spin: SpinBox
+var cheat_boss_effect_stack_spin: SpinBox
+var cheat_resonance_slot_option: OptionButton
+var cheat_resonance_spin: SpinBox
 var cheat_pick_cell_pending: bool = false
 
 func _ready() -> void:
@@ -111,6 +271,31 @@ func _ready() -> void:
 	_show_main_menu()
 
 func _input(event: InputEvent) -> void:
+	if kakaro_targeting_slot >= 0:
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			_cancel_kakaro_targeting()
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+			_cancel_kakaro_targeting()
+			get_viewport().set_input_as_handled()
+			return
+	if coletta_targeting_slot >= 0:
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			_cancel_coletta_targeting()
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_RIGHT:
+				_cancel_coletta_targeting()
+				get_viewport().set_input_as_handled()
+				return
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				coletta_target_orientation = "vertical" if coletta_target_orientation == "horizontal" else "horizontal"
+				_set_boss_status(_coletta_targeting_hint(), "冷凝")
+				_redraw_game()
+				get_viewport().set_input_as_handled()
+				return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_SPACE:
 		if current_screen == "game" and board != null:
 			_toggle_cheat_panel()
@@ -165,12 +350,33 @@ func _clear_screen() -> void:
 	cheat_effect_option = null
 	cheat_direction_option = null
 	cheat_lock_spin = null
+	cheat_resonance_slot_option = null
+	cheat_resonance_spin = null
 	cheat_pick_cell_pending = false
+	coletta_targeting_slot = -1
+	coletta_target_orientation = "horizontal"
+	coletta_hovered_cell = Vector2i(-1, -1)
+	kakaro_targeting_slot = -1
+	kakaro_hovered_cell = Vector2i(-1, -1)
 	_set_page_margins(28, 32, 28, 32)
 	root.alignment = BoxContainer.ALIGNMENT_CENTER
 	for child in root.get_children():
 		root.remove_child(child)
 		child.queue_free()
+	# Screen changes can happen while an awaited board animation is still
+	# finishing.  Do not leave the battle HUD variables pointing at controls
+	# which will be freed at the end of this frame.
+	board_area = null
+	board_grid = null
+	score_label = null
+	combo_label = null
+	boss_label = null
+	boss_name_label = null
+	boss_avatar = null
+	boss_avatar_texture = null
+	boss_hp_label = null
+	boss_hp_segments = null
+	roster_bar = null
 	selected_cell = Vector2i(-1, -1)
 
 func _add_title(text: String) -> Label:
@@ -477,15 +683,15 @@ func _update_roster_detail(piece: PieceDefinition = null) -> void:
 		var effect: SpecialEffectDefinition = catalog.get_effect(target_piece.default_special_effect_id)
 		if effect != null:
 			effect_name = effect.display_name
-	var resonance_effect: String = target_piece.resonance_effect_id
-	if resonance_effect.is_empty():
-		resonance_effect = "none"
-	roster_detail_label.text = "%s大招：\n倍率：x%.1f  稀有度：%s\n共鸣：%d  效果：%s\n技能：%s\n%s\n属性：%s" % [
-		target_piece.display_name,
-		target_piece.multiplier,
-		target_piece.rarity,
+	var resonance_gain: String = target_piece.resonance_gain_description
+	if resonance_gain.is_empty():
+		resonance_gain = target_piece.resonance_gain_id
+	if resonance_gain.is_empty():
+		resonance_gain = "none"
+	roster_detail_label.text = "攻击力：%d\n共鸣能量：%d\n能量获取方式：%s\n技能：%s\n%s\n属性：%s" % [
+		target_piece.attack,
 		target_piece.resonance_cost,
-		resonance_effect,
+		resonance_gain,
 		effect_name,
 		target_piece.description,
 		String(",").join(target_piece.tags),
@@ -652,6 +858,7 @@ func _start_run() -> void:
 	run_state = {
 		"floor": 1,
 		"lives": RUN_MAX_LIVES,
+		"actions": RUN_MAX_ACTIONS,
 		"shells": 0,
 		"collectibles": [],
 		"completed_nodes": 0,
@@ -845,11 +1052,13 @@ func _show_run_map() -> void:
 	bag_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	top_bar.add_child(bag_button)
 	var summary: Label = Label.new()
-	summary.text = "层数：%d / %d    生命：%d / %d    贝币：%d    藏品：%d    分数：%d" % [
+	summary.text = "层数：%d / %d    生命：%d / %d    行动：%d / %d    贝币：%d    藏品：%d    分数：%d" % [
 		int(run_state.get("floor", 1)),
 		RUN_TOTAL_FLOORS,
 		int(run_state.get("lives", RUN_MAX_LIVES)),
 		RUN_MAX_LIVES,
+		int(run_state.get("actions", RUN_MAX_ACTIONS)),
+		RUN_MAX_ACTIONS,
 		int(run_state.get("shells", 0)),
 		_run_collectibles().size(),
 		score,
@@ -937,12 +1146,17 @@ func _start_game() -> void:
 	combo = 0
 	max_combo = 0
 	current_boss = catalog.get_default_boss()
+	_reset_boss_effects()
 	boss_max_hp = _current_boss_base_hp()
 	boss_hp = boss_max_hp
+	boss_hp_infinite = true
 	moves_since_enemy = 0
 	skip_bonus_pending = false
 	suppress_next_enemy_effect = false
 	resonance_values = []
+	coletta_release_active = false
+	kakaro_release_active = false
+	kakaro_releases_remaining = 0
 	for i in range(SLOT_ATTRIBUTES.size()):
 		resonance_values.append(0)
 	boss_status_text = "团子大魔王：观察中"
@@ -957,18 +1171,25 @@ func _start_battle_node(node: Dictionary) -> void:
 	current_boss = catalog.get_boss(String(node.get("boss_id", "")))
 	if current_boss == null:
 		current_boss = catalog.get_default_boss()
+	_reset_boss_effects()
 	boss_max_hp = _run_boss_hp_for_node(node)
 	boss_hp = boss_max_hp
+	boss_hp_infinite = false
 	moves_since_enemy = 0
 	skip_bonus_pending = false
 	suppress_next_enemy_effect = false
 	resonance_values = []
+	coletta_release_active = false
+	kakaro_release_active = false
+	kakaro_releases_remaining = 0
 	for i in range(SLOT_ATTRIBUTES.size()):
 		resonance_values.append(0)
 	var start_charge: int = int(_collectible_total("start_resonance"))
 	if start_charge > 0:
 		for i in range(SLOT_ATTRIBUTES.size()):
 			resonance_values[i] = min(_resonance_cost(i), start_charge)
+	coletta_release_active = _is_coletta_fully_charged()
+	_activate_kakaro_release_if_full()
 	boss_status_text = "探索战斗开始"
 	current_roster = _sanitize_roster(current_roster)
 	_show_game_shell("探索战斗准备中...")
@@ -1017,7 +1238,7 @@ func _show_game_shell(boss_text: String = "团子大魔王：观察中") -> void
 	root.add_theme_constant_override("separation", 12)
 	root.alignment = BoxContainer.ALIGNMENT_BEGIN
 	var board_pixel_size: float = _board_cell_size() * float(BoardModel.WIDTH) + 2.0 * float(BoardModel.WIDTH - 1)
-	var roster_grid_width: float = _battle_roster_slot_size() * 3.0 + 16.0
+	var roster_grid_width: float = _battle_roster_hit_size() * 3.0 + 16.0
 	var top: HBoxContainer = HBoxContainer.new()
 	top.alignment = BoxContainer.ALIGNMENT_CENTER
 	top.add_theme_constant_override("separation", roundi(clamp(viewport_size.x * 0.014, 8.0, 18.0)))
@@ -1121,29 +1342,42 @@ func _show_game_shell(boss_text: String = "团子大魔王：观察中") -> void
 	roster_bar = HBoxContainer.new()
 	roster_bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	roster_bar.add_theme_constant_override("separation", 12)
-	roster_bar.custom_minimum_size = Vector2(0, _battle_roster_slot_size() * 2.0 + 28.0)
+	roster_bar.custom_minimum_size = Vector2(0, _battle_roster_hit_size() * 2.0 + 28.0)
 	roster_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	roster_bar.size_flags_vertical = Control.SIZE_SHRINK_END
 	right_column.add_child(roster_bar)
 	_build_cheat_panel()
 
 func _redraw_game() -> void:
+	# Awaited animation callbacks may resume after the player has left the
+	# battle screen.  In that case all HUD controls belong to the old screen.
+	if current_screen != "game":
+		return
+	if not is_instance_valid(score_label) or not is_instance_valid(combo_label):
+		return
+	if not is_instance_valid(board_grid) or not is_instance_valid(roster_bar):
+		return
 	if board == null or board.cells.is_empty():
-		if score_label != null:
+		if is_instance_valid(score_label):
 			score_label.text = "分数：%d  " % score
-		if combo_label != null:
+		if is_instance_valid(combo_label):
 			combo_label.text = "Combo：%d  " % combo
-		if boss_label != null:
+		if is_instance_valid(boss_label):
 			boss_label.text = "棋盘初始化失败"
 		var error_label: Label = Label.new()
 		error_label.text = "棋盘初始化失败：没有可用团子。请检查 data/pieces 或 PieceCatalog 默认配置。"
 		error_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 		root.add_child(error_label)
 		return
-	score_label.text = "分数：%d  " % score
+	score_label.text = "分数：%d%s  " % [score, "  行动：%d/%d" % [int(run_state.get("actions", RUN_MAX_ACTIONS)), RUN_MAX_ACTIONS] if run_active else ""]
 	combo_label.text = "Combo：%d  " % combo
 	_update_boss_hp_ui()
 	for child in board_grid.get_children():
+		# A redraw can run from the button's own signal callback, where immediate
+		# free() is forbidden because the object is locked. Detach synchronously
+		# so stale buttons stop rendering and cannot be found, then defer memory
+		# release safely.
+		board_grid.remove_child(child)
 		child.queue_free()
 	for y in range(BoardModel.HEIGHT):
 		for x in range(BoardModel.WIDTH):
@@ -1155,24 +1389,27 @@ func _redraw_game() -> void:
 	_update_cheat_panel_from_selection()
 
 func _update_boss_hp_ui() -> void:
-	if boss_hp_label != null:
-		boss_hp_label.text = "%d / %d" % [max(0, boss_hp), boss_max_hp]
-	if boss_hp_segments == null:
+	if is_instance_valid(boss_hp_label):
+		var hp_text: String = BOSS_INFINITE_HP_TEXT if boss_hp_infinite else "%d / %d" % [max(0, boss_hp), boss_max_hp]
+		boss_hp_label.text = "%s  防御:%d%s" % [hp_text, _effective_boss_defense(), _boss_effects_text()]
+	if not is_instance_valid(boss_hp_segments):
 		return
 	for child in boss_hp_segments.get_children():
 		child.queue_free()
-	var segment_max: float = float(boss_max_hp) / float(BOSS_SEGMENTS)
+	var segment_max: float = 1.0 if boss_hp_infinite else float(boss_max_hp) / float(BOSS_SEGMENTS)
 	for index in range(BOSS_SEGMENTS):
 		var segment: ProgressBar = ProgressBar.new()
 		segment.min_value = 0
 		segment.max_value = segment_max
-		segment.value = clamp(float(boss_hp) - segment_max * float(index), 0.0, segment_max)
+		segment.value = segment_max if boss_hp_infinite else clamp(float(boss_hp) - segment_max * float(index), 0.0, segment_max)
 		segment.show_percentage = false
 		segment.custom_minimum_size = Vector2(0, 14)
 		segment.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		boss_hp_segments.add_child(segment)
 
 func _boss_phase() -> int:
+	if boss_hp_infinite:
+		return 3
 	var hp_ratio: float = float(boss_hp) / float(boss_max_hp)
 	if hp_ratio > 0.6667:
 		return 3
@@ -1180,18 +1417,103 @@ func _boss_phase() -> int:
 		return 2
 	return 1
 
-func _damage_boss(cleared_positions: Array) -> void:
-	if boss_hp <= 0 or cleared_positions.is_empty():
+func _reset_boss_effects() -> void:
+	boss_effects = {}
+	boss_frozen = false
+
+func _boss_effect_stacks(effect_id: String) -> int:
+	return int(boss_effects.get(effect_id, 0))
+
+func _set_boss_effect_stacks(effect_id: String, amount: int) -> int:
+	if not EFFECT_LIMITS.has(effect_id):
+		return 0
+	var value: int = clamp(amount, 0, int(EFFECT_LIMITS[effect_id]))
+	if value <= 0:
+		boss_effects.erase(effect_id)
+	else:
+		boss_effects[effect_id] = value
+	if effect_id == "frost" and value >= int(EFFECT_LIMITS[effect_id]):
+		boss_frozen = true
+	if effect_id == "explosive" and value >= int(EFFECT_LIMITS[effect_id]):
+		_apply_direct_boss_damage(EFFECT_EXPLOSIVE_BOSS_DAMAGE, "聚爆")
+		boss_effects.erase(effect_id)
+		value = 0
+	return value
+
+func _add_boss_effect_stacks(effect_id: String, amount: int) -> int:
+	return _set_boss_effect_stacks(effect_id, _boss_effect_stacks(effect_id) + amount)
+
+func _effective_boss_defense() -> int:
+	var base_defense: int = 20 if current_boss == null else max(0, int(current_boss.defense))
+	return max(0, roundi(float(base_defense) * (1.0 - 0.02 * float(_boss_effect_stacks("annihilation")))))
+
+func _apply_direct_boss_damage(amount: int, source: String) -> int:
+	if amount <= 0 or (not boss_hp_infinite and boss_hp <= 0):
+		return 0
+	if boss_hp_infinite:
+		_set_boss_status("%s造成 %d 点直接伤害；Boss生命无限。" % [source, amount], source)
+		return amount
+	var actual: int = min(boss_hp, amount)
+	boss_hp = max(0, boss_hp - amount)
+	_update_boss_hp_ui()
+	_set_boss_status("%s造成 %d 点直接伤害。" % [source, actual], source)
+	return actual
+
+func _transfer_cleared_effects_to_boss(targets: Array) -> void:
+	for pos in targets:
+		if board == null or not board.in_bounds(pos):
+			continue
+		var cell: Variant = board.get_cell(pos)
+		if cell == null:
+			continue
+		var effects: Dictionary = cell.get("effects", {})
+		for effect_id in EFFECT_LIMITS.keys():
+			var amount: int = int(effects.get(effect_id, 0))
+			if amount > 0:
+				_add_boss_effect_stacks(String(effect_id), amount)
+
+func _filter_clear_targets(targets: Array, resonance_clear: bool = false) -> Array:
+	var result: Array = []
+	for pos in _unique_in_bounds_targets(targets):
+		var cell: Variant = board.get_cell(pos)
+		if cell == null:
+			continue
+		if board.effect_stacks(cell, "annihilation") >= int(EFFECT_LIMITS["annihilation"]) and not resonance_clear:
+			continue
+		if board.effect_stacks(cell, "frost") >= int(EFFECT_LIMITS["frost"]):
+			board.set_effect_stacks(pos, "frost", 0)
+			continue
+		result.append(pos)
+	return result
+
+func _damage_boss(cleared_positions: Array, damage_multiplier: float = 1.0) -> void:
+	if (not boss_hp_infinite and boss_hp <= 0) or cleared_positions.is_empty():
 		return
-	var damage: int = cleared_positions.size() * BOSS_DAMAGE_PER_PIECE
-	if run_active:
-		damage = roundi(float(damage) * (1.0 + _collectible_total("damage_mult")))
+	var damage: int = _calculate_boss_damage(cleared_positions, damage_multiplier)
+	if boss_hp_infinite:
+		_update_boss_hp_ui()
+		_set_boss_status("团子命中%s，造成 %d 点伤害。Boss 血量无限。" % [_current_boss_name(), damage], "受击")
+		return
 	boss_hp = max(0, boss_hp - damage)
 	_update_boss_hp_ui()
 	if boss_hp <= 0:
 		_set_boss_status("%s倒下了，关卡完成！" % _current_boss_name(), "胜利")
 	else:
 		_set_boss_status("团子命中%s，造成 %d 点伤害。" % [_current_boss_name(), damage], "受击")
+
+func _calculate_boss_damage(cleared_positions: Array, damage_multiplier: float = 1.0) -> int:
+	if cleared_positions.is_empty():
+		return 0
+	var defense: int = _effective_boss_defense()
+	var defense_factor: float = 100.0 / (100.0 + float(defense))
+	var base_damage: float = 0.0
+	for target_pos in cleared_positions:
+		var cell: Dictionary = board.get_cell(target_pos) if board != null else {}
+		var piece: PieceDefinition = catalog.get_piece(String(cell.get("piece_id", ""))) if catalog != null else null
+		var attack: int = 6 if piece == null else max(0, piece.attack)
+		base_damage += float(attack) * defense_factor
+	var collectible_multiplier: float = 1.0 + _collectible_total("damage_mult")
+	return roundi(base_damage * max(0.0, damage_multiplier) * collectible_multiplier)
 
 func _finish_battle() -> void:
 	if run_active:
@@ -1226,44 +1548,389 @@ func _make_battle_roster_slot(index: int) -> Button:
 	var piece: PieceDefinition = catalog.get_piece(current_roster[index]) if index < current_roster.size() else null
 	var button: Button = Button.new()
 	var slot_size: float = _battle_roster_slot_size()
-	button.custom_minimum_size = Vector2(slot_size, slot_size)
+	var hit_size: float = _battle_roster_hit_size()
+	button.custom_minimum_size = Vector2(hit_size, hit_size)
 	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button.text = ""
 	button.disabled = is_animating_board
-	_apply_battle_roster_button_style(button, _is_resonance_ready(index))
+	_apply_battle_roster_button_style(button, _is_resonance_ready(index) or coletta_targeting_slot == index or kakaro_targeting_slot == index)
 	button.pressed.connect(func() -> void: _on_battle_roster_pressed(index))
 	var box: VBoxContainer = VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	box.offset_left = 6
-	box.offset_top = 5
-	box.offset_right = -6
-	box.offset_bottom = -5
+	box.offset_left = BATTLE_ROSTER_HIT_PADDING + 6.0
+	box.offset_top = BATTLE_ROSTER_HIT_PADDING + 5.0
+	box.offset_right = -BATTLE_ROSTER_HIT_PADDING - 6.0
+	box.offset_bottom = -BATTLE_ROSTER_HIT_PADDING - 5.0
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 2)
 	button.add_child(box)
 	var texture: Texture2D = _piece_preview_texture(piece, _is_resonance_ready(index))
+	var is_coletta: bool = piece != null and piece.id == COLETTA_PIECE_ID
+	var is_phoebe: bool = piece != null and piece.id == PHOEBE_PIECE_ID
+	var is_kakaro: bool = piece != null and piece.id == KAKARO_PIECE_ID
 	if texture != null:
-		box.add_child(_make_piece_texture_rect(texture, Vector2(slot_size * 0.78, slot_size * 0.78)))
-	var progress: ProgressBar = ProgressBar.new()
-	progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	progress.min_value = 0
-	progress.max_value = _resonance_cost(index)
-	progress.value = _resonance_value(index)
-	progress.show_percentage = false
-	progress.custom_minimum_size = Vector2(0, 10)
-	progress.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_child(progress)
+		var icon_scale: float = 0.64 if is_coletta or is_phoebe or is_kakaro else 0.78
+		box.add_child(_make_piece_texture_rect(texture, Vector2(slot_size * icon_scale, slot_size * icon_scale)))
+	if is_coletta:
+		box.add_child(_make_coletta_resonance_bar(index, slot_size))
+	elif is_phoebe:
+		box.add_child(_make_phoebe_resonance_bar(index, slot_size))
+	elif is_kakaro:
+		box.add_child(_make_kakaro_resonance_bar(index, slot_size))
+	else:
+		var progress: ProgressBar = ProgressBar.new()
+		progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		progress.min_value = 0
+		progress.max_value = _resonance_cost(index)
+		progress.value = _resonance_value(index)
+		progress.show_percentage = false
+		progress.custom_minimum_size = Vector2(0, 10)
+		progress.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		box.add_child(progress)
 	var value_label: Label = Label.new()
 	value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value_label.add_theme_font_size_override("font_size", max(11, int(slot_size * 0.08)))
 	value_label.text = "共鸣 %d/%d" % [_resonance_value(index), _resonance_cost(index)]
-	if _is_resonance_ready(index):
+	if is_coletta and coletta_targeting_slot == index:
+		value_label.text = "瞄准%s（滚轮切换）" % ("行" if coletta_target_orientation == "horizontal" else "列")
+	elif is_coletta and coletta_release_active:
+		value_label.text = "可释放 %d 次" % _resonance_value(index)
+	elif is_kakaro and kakaro_targeting_slot == index:
+		value_label.text = "瞄准十字"
+	elif is_kakaro and kakaro_release_active:
+		value_label.text = "可释放 %d 次" % kakaro_releases_remaining
+	elif _is_resonance_ready(index):
 		value_label.text = "共鸣解放"
 	box.add_child(value_label)
 	return button
+
+func _make_coletta_resonance_bar(index: int, slot_size: float) -> Control:
+	var wrapper: Control = Control.new()
+	var width: float = max(58.0, slot_size * 0.92)
+	var height: float = max(10.0, width * COLETTA_RESONANCE_TEXTURE_SIZE.y / COLETTA_RESONANCE_TEXTURE_SIZE.x)
+	wrapper.custom_minimum_size = Vector2(width, height)
+	wrapper.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	wrapper.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrapper.clip_contents = true
+	var remaining: int = _resonance_value(index)
+	if coletta_release_active and remaining > 0:
+		_make_coletta_ready_layers(wrapper, remaining)
+		return wrapper
+	_make_coletta_normal_background(wrapper)
+	var resonance_ratio: float = clamp(float(_resonance_value(index)) / float(_resonance_cost(index)), 0.0, 1.0)
+	if resonance_ratio > 0.0:
+		var wave_track: Control = Control.new()
+		wave_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wrapper.add_child(wave_track)
+		var wave_clip: Control = Control.new()
+		wave_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wave_clip.clip_contents = true
+		wave_track.add_child(wave_clip)
+		wrapper.resized.connect(func() -> void:
+			var horizontal_inset: float = wrapper.size.x * COLETTA_WAVE_HORIZONTAL_INSET_RATIO
+			wave_track.position = Vector2(horizontal_inset, 0.0)
+			wave_track.size = Vector2(wrapper.size.x - horizontal_inset * 2.0, wrapper.size.y)
+			wave_clip.position = Vector2.ZERO
+			wave_clip.size = Vector2(wave_track.size.x * resonance_ratio, wave_track.size.y)
+		)
+		_make_coletta_wave_layers(wave_clip)
+		wrapper.call_deferred("emit_signal", "resized")
+	return wrapper
+
+func _make_coletta_normal_background(parent: Control) -> void:
+	_add_coletta_full_texture(parent, COLETTA_RESONANCE_EMPTY_COMPOSITE)
+
+func _make_coletta_wave_layers(parent: Control) -> void:
+	var wave: TextureRect = TextureRect.new()
+	wave.texture = load(COLETTA_RESONANCE_WAVE_TEXTURE) as Texture2D
+	wave.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wave.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	wave.stretch_mode = TextureRect.STRETCH_SCALE
+	wave.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var fade_shader: Shader = Shader.new()
+	fade_shader.code = COLETTA_WAVE_FADE_SHADER
+	var fade_material: ShaderMaterial = ShaderMaterial.new()
+	fade_material.shader = fade_shader
+	wave.material = fade_material
+	parent.add_child(wave)
+	parent.resized.connect(func() -> void:
+		var full_bar: Control = parent.get_parent() as Control
+		var wave_y: float = full_bar.size.y * COLETTA_WAVE_BASELINE_RATIO * (1.0 - COLETTA_WAVE_HEIGHT_SCALE)
+		wave.position = Vector2(0.0, wave_y)
+		wave.size = Vector2(full_bar.size.x, full_bar.size.y * COLETTA_WAVE_HEIGHT_SCALE)
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _make_coletta_ready_layers(parent: Control, remaining: int) -> void:
+	var texture_path: String = String(COLETTA_RESONANCE_REMAINING_TEXTURES.get(remaining, COLETTA_RESONANCE_READY_COMPOSITE))
+	_add_coletta_full_texture(parent, texture_path)
+
+func _add_coletta_full_texture(parent: Control, texture_path: String) -> void:
+	var texture: Texture2D = load(texture_path) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		rect.position = Vector2.ZERO
+		rect.size = parent.size
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _add_coletta_component(parent: Control, texture_path: String, logical_position: Vector2, component_scale: float = 1.0, flip_horizontal: bool = false) -> void:
+	var texture: Texture2D = load(texture_path) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	rect.flip_h = flip_horizontal
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		var scale_factor: float = min(parent.size.x / COLETTA_RESONANCE_TEXTURE_SIZE.x, parent.size.y / COLETTA_RESONANCE_TEXTURE_SIZE.y)
+		var offset: Vector2 = (parent.size - COLETTA_RESONANCE_TEXTURE_SIZE * scale_factor) * 0.5
+		rect.position = offset + logical_position * scale_factor
+		rect.size = texture.get_size() * scale_factor * component_scale
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _make_phoebe_resonance_bar(index: int, slot_size: float) -> Control:
+	var wrapper: Control = Control.new()
+	var width: float = max(58.0, slot_size * 0.92)
+	var height: float = max(10.0, width * PHOEBE_RESONANCE_TEXTURE_SIZE.y / PHOEBE_RESONANCE_TEXTURE_SIZE.x)
+	wrapper.custom_minimum_size = Vector2(width, height)
+	wrapper.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	wrapper.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrapper.clip_contents = true
+	if _is_resonance_ready(index):
+		_make_phoebe_ready_layers(wrapper)
+		return wrapper
+	_make_phoebe_base_layers(wrapper, false)
+	var resonance_ratio: float = clamp(float(_resonance_value(index)) / float(_resonance_cost(index)), 0.0, 1.0)
+	if resonance_ratio > 0.0:
+		_add_phoebe_progress_wave(wrapper, resonance_ratio)
+	_add_phoebe_layer(wrapper, PHOEBE_STAR_NORMAL, PHOEBE_STAR_RECT)
+	return wrapper
+
+func _make_phoebe_base_layers(parent: Control, is_ready_state: bool) -> void:
+	var glow_shader: Shader = Shader.new()
+	glow_shader.code = PHOEBE_GLOW_SHADER
+	var glow_material: ShaderMaterial = ShaderMaterial.new()
+	glow_material.shader = glow_shader
+	_add_phoebe_layer(parent, PHOEBE_CENTER_GLOW, PHOEBE_GLOW_RECT, glow_material)
+	_add_phoebe_layer(parent, PHOEBE_FRAME_READY if is_ready_state else PHOEBE_FRAME_NORMAL, PHOEBE_FRAME_RECT)
+	_add_phoebe_layer(parent, PHOEBE_LINE_READY if is_ready_state else PHOEBE_LINE_NORMAL, PHOEBE_LINE_RECT)
+
+func _make_phoebe_ready_layers(parent: Control) -> void:
+	_make_phoebe_base_layers(parent, true)
+	_add_phoebe_layer(parent, PHOEBE_RESONANCE_WAVE, PHOEBE_WAVE_RECT, _make_phoebe_wave_material(true))
+	_add_phoebe_layer(parent, PHOEBE_STAR_READY, PHOEBE_STAR_RECT)
+
+func _make_phoebe_wave_material(is_ready_state: bool) -> ShaderMaterial:
+	var wave_shader: Shader = Shader.new()
+	wave_shader.code = PHOEBE_WAVE_ANIMATION_SHADER
+	var wave_material: ShaderMaterial = ShaderMaterial.new()
+	wave_material.shader = wave_shader
+	wave_material.set_shader_parameter("recolor_strength", 1.0 if is_ready_state else 0.0)
+	return wave_material
+
+func _add_phoebe_progress_wave(parent: Control, progress_ratio: float) -> void:
+	var wave_track: Control = Control.new()
+	wave_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(wave_track)
+	var wave_clip: Control = Control.new()
+	wave_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wave_clip.clip_contents = true
+	wave_track.add_child(wave_clip)
+	parent.resized.connect(func() -> void:
+		var scale_factor: Vector2 = parent.size / PHOEBE_RESONANCE_TEXTURE_SIZE
+		wave_track.position = PHOEBE_WAVE_RECT.position * scale_factor
+		wave_track.size = PHOEBE_WAVE_RECT.size * scale_factor
+		wave_clip.position = Vector2.ZERO
+		wave_clip.size = Vector2(wave_track.size.x * progress_ratio, wave_track.size.y)
+	)
+	_add_phoebe_wave_to_clip(wave_clip)
+	parent.call_deferred("emit_signal", "resized")
+
+func _add_phoebe_wave_to_clip(parent: Control) -> void:
+	var texture: Texture2D = load(PHOEBE_RESONANCE_WAVE) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	rect.material = _make_phoebe_wave_material(false)
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		var full_track: Control = parent.get_parent() as Control
+		rect.position = Vector2.ZERO
+		rect.size = full_track.size
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _add_phoebe_layer(parent: Control, texture_path: String, logical_rect: Rect2, layer_material: Material = null) -> void:
+	var texture: Texture2D = load(texture_path) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	rect.material = layer_material
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		var scale_factor: Vector2 = parent.size / PHOEBE_RESONANCE_TEXTURE_SIZE
+		rect.position = logical_rect.position * scale_factor
+		rect.size = logical_rect.size * scale_factor
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _make_kakaro_resonance_bar(index: int, slot_size: float) -> Control:
+	var wrapper: Control = Control.new()
+	var width: float = max(58.0, slot_size * 0.92)
+	var height: float = max(10.0, width * KAKARO_RESONANCE_TEXTURE_SIZE.y / KAKARO_RESONANCE_TEXTURE_SIZE.x)
+	wrapper.custom_minimum_size = Vector2(width, height)
+	wrapper.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	wrapper.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrapper.clip_contents = true
+	if _is_resonance_ready(index):
+		_add_kakaro_layer(wrapper, KAKARO_RESONANCE_READY_FRAME, Rect2(Vector2.ZERO, KAKARO_RESONANCE_TEXTURE_SIZE))
+		_add_kakaro_ready_wave(wrapper, _kakaro_release_ratio())
+		return wrapper
+	_add_kakaro_layer(wrapper, KAKARO_RESONANCE_EMPTY, Rect2(Vector2.ZERO, KAKARO_RESONANCE_TEXTURE_SIZE))
+	var resonance_ratio: float = clamp(float(_resonance_value(index)) / float(_resonance_cost(index)), 0.0, 1.0)
+	if resonance_ratio > 0.0:
+		_add_kakaro_progress_wave(wrapper, resonance_ratio)
+	return wrapper
+
+func _kakaro_release_ratio() -> float:
+	var piece: PieceDefinition = catalog.get_piece(KAKARO_PIECE_ID)
+	var release_count: int = max(1, _param_int(piece.resonance_effect_params, "release_count", 5)) if piece != null else 5
+	return clamp(float(kakaro_releases_remaining) / float(release_count), 0.0, 1.0)
+
+func _add_kakaro_ready_wave(parent: Control, remaining_ratio: float) -> void:
+	if remaining_ratio <= 0.0:
+		return
+	var wave_track: Control = Control.new()
+	wave_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(wave_track)
+	var wave_clip: Control = Control.new()
+	wave_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wave_clip.clip_contents = true
+	wave_track.add_child(wave_clip)
+	parent.resized.connect(func() -> void:
+		var scale_factor: Vector2 = parent.size / KAKARO_RESONANCE_TEXTURE_SIZE
+		wave_track.position = KAKARO_READY_WAVE_RECT.position * scale_factor
+		wave_track.size = KAKARO_READY_WAVE_RECT.size * scale_factor
+		wave_clip.position = Vector2.ZERO
+		wave_clip.size = Vector2(wave_track.size.x * remaining_ratio, wave_track.size.y)
+	)
+	_add_kakaro_ready_wave_to_clip(wave_clip)
+	parent.call_deferred("emit_signal", "resized")
+
+func _add_kakaro_ready_wave_to_clip(parent: Control) -> void:
+	var texture: Texture2D = load(KAKARO_RESONANCE_READY_WAVE) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	rect.material = _make_kakaro_wave_material(false)
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		var full_track: Control = parent.get_parent() as Control
+		rect.position = Vector2.ZERO
+		rect.size = full_track.size
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _make_kakaro_wave_material(is_ready_state: bool) -> ShaderMaterial:
+	var wave_shader: Shader = Shader.new()
+	wave_shader.code = PHOEBE_WAVE_ANIMATION_SHADER
+	var wave_material: ShaderMaterial = ShaderMaterial.new()
+	wave_material.shader = wave_shader
+	wave_material.set_shader_parameter("recolor_strength", 1.0 if is_ready_state else 0.0)
+	wave_material.set_shader_parameter("top_color", Color(0.72, 0.76, 1.0, 1.0))
+	wave_material.set_shader_parameter("bottom_color", Color(0.57, 0.24, 0.95, 1.0))
+	return wave_material
+
+func _add_kakaro_progress_wave(parent: Control, progress_ratio: float) -> void:
+	var wave_track: Control = Control.new()
+	wave_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(wave_track)
+	var wave_clip: Control = Control.new()
+	wave_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wave_clip.clip_contents = true
+	wave_track.add_child(wave_clip)
+	parent.resized.connect(func() -> void:
+		var scale_factor: Vector2 = parent.size / KAKARO_RESONANCE_TEXTURE_SIZE
+		wave_track.position = KAKARO_WAVE_RECT.position * scale_factor
+		wave_track.size = KAKARO_WAVE_RECT.size * scale_factor
+		wave_clip.position = Vector2.ZERO
+		wave_clip.size = Vector2(wave_track.size.x * progress_ratio, wave_track.size.y)
+	)
+	_add_kakaro_wave_to_clip(wave_clip)
+	parent.call_deferred("emit_signal", "resized")
+
+func _add_kakaro_wave_to_clip(parent: Control) -> void:
+	var texture: Texture2D = load(KAKARO_RESONANCE_WAVE) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	rect.material = _make_kakaro_wave_material(false)
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		var full_track: Control = parent.get_parent() as Control
+		rect.position = Vector2.ZERO
+		rect.size = full_track.size
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _add_kakaro_layer(parent: Control, texture_path: String, logical_rect: Rect2, layer_material: Material = null) -> void:
+	var texture: Texture2D = load(texture_path) as Texture2D
+	if texture == null:
+		return
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	rect.material = layer_material
+	parent.add_child(rect)
+	parent.resized.connect(func() -> void:
+		var scale_factor: Vector2 = parent.size / KAKARO_RESONANCE_TEXTURE_SIZE
+		rect.position = logical_rect.position * scale_factor
+		rect.size = logical_rect.size * scale_factor
+	)
+	parent.call_deferred("emit_signal", "resized")
 
 func _apply_battle_roster_button_style(button: Button, active: bool) -> void:
 	var normal: StyleBoxFlat = _make_transparent_button_style(0.0)
@@ -1295,6 +1962,40 @@ func _make_transparent_button_style(alpha: float) -> StyleBoxFlat:
 func _on_battle_roster_pressed(slot_index: int) -> void:
 	if is_animating_board:
 		return
+	var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index]) if slot_index < current_roster.size() else null
+	if piece != null and piece.id == COLETTA_PIECE_ID:
+		if kakaro_targeting_slot >= 0:
+			kakaro_targeting_slot = -1
+			kakaro_hovered_cell = Vector2i(-1, -1)
+		if coletta_targeting_slot == slot_index:
+			_cancel_coletta_targeting()
+			return
+		if not _is_resonance_ready(slot_index):
+			_set_boss_status("柯莱塔回路：%d/%d，充满后才可释放" % [_resonance_value(slot_index), _resonance_cost(slot_index)], "共鸣")
+			return
+		coletta_targeting_slot = slot_index
+		coletta_target_orientation = "horizontal"
+		coletta_hovered_cell = Vector2i(-1, -1)
+		selected_cell = Vector2i(-1, -1)
+		_set_boss_status(_coletta_targeting_hint(), "冷凝")
+		_redraw_game()
+		return
+	if piece != null and piece.id == KAKARO_PIECE_ID:
+		if coletta_targeting_slot >= 0:
+			coletta_targeting_slot = -1
+			coletta_hovered_cell = Vector2i(-1, -1)
+		if kakaro_targeting_slot == slot_index:
+			_cancel_kakaro_targeting()
+			return
+		if not _is_resonance_ready(slot_index):
+			_set_boss_status("卡卡罗回路：%d/%d，充满后才可释放" % [_resonance_value(slot_index), _resonance_cost(slot_index)], "共鸣")
+			return
+		kakaro_targeting_slot = slot_index
+		kakaro_hovered_cell = Vector2i(-1, -1)
+		selected_cell = Vector2i(-1, -1)
+		_set_boss_status("卡卡罗瞄准：点击格子清除十字；右键或 Esc 取消", "导电")
+		_redraw_game()
+		return
 	if not _is_resonance_ready(slot_index):
 		_set_boss_status("%s回路：%d/%d" % [SLOT_ATTRIBUTES[slot_index], _resonance_value(slot_index), _resonance_cost(slot_index)], "共鸣")
 		return
@@ -1321,16 +2022,58 @@ func _make_cell_button(pos: Vector2i) -> Button:
 	else:
 		_apply_piece_background(button, String(cell["piece_id"]))
 		button.text = _cell_text(cell, piece)
+	_add_effect_badge_to_button(button, cell, cell_size)
 	if piece != null and piece.icon_texture == null:
 		button.modulate = piece.theme_color
-	if int(cell["locked_turns"]) > 0:
+	if board.is_immovable(pos):
 		button.text += "\n锁"
+	if board.effect_stacks(cell, "frost") >= int(EFFECT_LIMITS["frost"]):
+		button.modulate = Color(0.65, 0.85, 1.0, 0.82)
+	elif board.effect_stacks(cell, "annihilation") >= int(EFFECT_LIMITS["annihilation"]):
+		button.modulate = Color(0.62, 0.42, 0.62, 0.82)
 	if pos == selected_cell and (piece == null or piece.icon_texture == null):
 		button.text = "[%s]" % button.text
 	if pos == selected_cell:
 		_add_selection_corners_to_button(button, String(cell["piece_id"]), cell_size)
+	if _is_coletta_preview_pos(pos):
+		_add_coletta_target_overlay(button)
+	if _is_kakaro_preview_pos(pos):
+		_add_kakaro_target_overlay(button)
+	button.mouse_entered.connect(func() -> void: _on_cell_hovered(pos))
 	button.pressed.connect(func() -> void: _on_cell_pressed(pos))
 	return button
+
+func _add_coletta_target_overlay(button: Button) -> void:
+	var overlay: ColorRect = ColorRect.new()
+	overlay.color = Color(0.35, 0.9, 1.0, 0.28)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	button.add_child(overlay)
+
+func _is_coletta_preview_pos(pos: Vector2i) -> bool:
+	if coletta_targeting_slot < 0 or coletta_hovered_cell == Vector2i(-1, -1):
+		return false
+	return pos.y == coletta_hovered_cell.y if coletta_target_orientation == "horizontal" else pos.x == coletta_hovered_cell.x
+
+func _on_cell_hovered(pos: Vector2i) -> void:
+	if coletta_targeting_slot >= 0 and coletta_hovered_cell != pos:
+		coletta_hovered_cell = pos
+		_redraw_game()
+	elif kakaro_targeting_slot >= 0 and kakaro_hovered_cell != pos:
+		kakaro_hovered_cell = pos
+		_redraw_game()
+
+func _add_kakaro_target_overlay(button: Button) -> void:
+	var overlay: ColorRect = ColorRect.new()
+	overlay.color = Color(0.68, 0.36, 1.0, 0.30)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	button.add_child(overlay)
+
+func _is_kakaro_preview_pos(pos: Vector2i) -> bool:
+	if kakaro_targeting_slot < 0 or kakaro_hovered_cell == Vector2i(-1, -1):
+		return false
+	return abs(pos.x - kakaro_hovered_cell.x) + abs(pos.y - kakaro_hovered_cell.y) <= 1
 
 func _add_selection_corners_to_button(button: Button, piece_id: String, cell_size: float) -> void:
 	var color: Color = _selection_color_for_piece_id(piece_id)
@@ -1570,6 +2313,9 @@ func _battle_roster_slot_size() -> float:
 	var landscape_scale: float = min(viewport_size.x / 1920.0, viewport_size.y / 1080.0)
 	return floor(clamp(BATTLE_ROSTER_SLOT_SIZE * landscape_scale, 64.0, BATTLE_ROSTER_SLOT_SIZE))
 
+func _battle_roster_hit_size() -> float:
+	return _battle_roster_slot_size() + BATTLE_ROSTER_HIT_PADDING * 2.0
+
 func _set_page_margins(left: int, top: int, right: int, bottom: int) -> void:
 	if content_margin == null:
 		return
@@ -1601,17 +2347,75 @@ func _cell_text(cell: Dictionary, piece: PieceDefinition) -> String:
 	if piece != null:
 		piece_label = piece.display_name.left(1)
 	var effect_id: String = String(cell["special_effect_id"])
+	var parts: Array[String] = []
+	if piece == null or piece.icon_texture == null:
+		parts.append(piece_label)
 	if effect_id.is_empty():
-		if piece != null and piece.icon_texture != null:
-			return ""
-		return piece_label
+		return "\n".join(parts)
 	var effect: SpecialEffectDefinition = catalog.get_effect(effect_id)
 	if effect == null:
-		return piece_label
-	return "%s\n%s" % [piece_label, effect.marker]
+		return "\n".join(parts)
+	parts.append(effect.marker)
+	return "\n".join(parts)
+
+func _add_effect_badge_to_button(button: Button, cell: Dictionary, cell_size: float) -> void:
+	var status_text: String = _piece_effects_text(cell)
+	if status_text.is_empty():
+		return
+	var badge: Label = Label.new()
+	badge.text = status_text
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	badge.add_theme_font_size_override("font_size", max(10, int(cell_size * 0.13)))
+	badge.add_theme_color_override("font_color", Color.WHITE)
+	badge.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
+	badge.add_theme_constant_override("shadow_offset_x", 1)
+	badge.add_theme_constant_override("shadow_offset_y", 1)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.anchor_left = 0.02
+	badge.anchor_top = 0.02
+	badge.anchor_right = 0.98
+	badge.anchor_bottom = 0.34
+	badge.offset_left = 0
+	badge.offset_top = 0
+	badge.offset_right = 0
+	badge.offset_bottom = 0
+	button.add_child(badge)
+
+func _piece_effects_text(cell: Dictionary) -> String:
+	var parts: Array[String] = []
+	var effects: Dictionary = cell.get("effects", {})
+	for effect_id in EFFECT_LIMITS.keys():
+		var stacks: int = int(effects.get(effect_id, 0))
+		if stacks > 0:
+			parts.append("%s%d%s" % [String(EFFECT_NAMES[effect_id]).left(1), stacks, "!" if stacks >= int(EFFECT_LIMITS[effect_id]) else ""])
+	return " ".join(parts)
+
+func _boss_effects_text() -> String:
+	var parts: Array[String] = []
+	for effect_id in EFFECT_LIMITS.keys():
+		var stacks: int = _boss_effect_stacks(String(effect_id))
+		if stacks > 0:
+			parts.append("%s%d" % [EFFECT_NAMES[effect_id], stacks])
+	if boss_frozen:
+		parts.append("冻结待触发")
+	return "  [" + " / ".join(parts) + "]" if not parts.is_empty() else ""
 
 func _on_cell_pressed(pos: Vector2i) -> void:
 	if is_animating_board:
+		return
+	if coletta_targeting_slot >= 0:
+		var slot_index: int = coletta_targeting_slot
+		var orientation: String = coletta_target_orientation
+		coletta_targeting_slot = -1
+		coletta_hovered_cell = Vector2i(-1, -1)
+		_release_resonance(slot_index, pos, orientation)
+		return
+	if kakaro_targeting_slot >= 0:
+		var slot_index: int = kakaro_targeting_slot
+		kakaro_targeting_slot = -1
+		kakaro_hovered_cell = Vector2i(-1, -1)
+		_release_resonance(slot_index, pos)
 		return
 	if cheat_pick_cell_pending:
 		cheat_pick_cell_pending = false
@@ -1647,11 +2451,31 @@ func _on_cell_pressed(pos: Vector2i) -> void:
 		return
 	_try_swap(selected_cell, pos)
 
+func _coletta_targeting_hint() -> String:
+	var target_name: String = "横行" if coletta_target_orientation == "horizontal" else "竖列"
+	return "柯莱塔瞄准：点击格子消除%s；滚轮切换行列，右键或 Esc 取消" % target_name
+
+func _cancel_coletta_targeting() -> void:
+	if coletta_targeting_slot < 0:
+		return
+	coletta_targeting_slot = -1
+	coletta_hovered_cell = Vector2i(-1, -1)
+	_set_boss_status("已取消柯莱塔共鸣解放", "冷凝")
+	_redraw_game()
+
+func _cancel_kakaro_targeting() -> void:
+	if kakaro_targeting_slot < 0:
+		return
+	kakaro_targeting_slot = -1
+	kakaro_hovered_cell = Vector2i(-1, -1)
+	_set_boss_status("已取消卡卡罗共鸣解放", "导电")
+	_redraw_game()
+
 func _try_swap(a: Vector2i, b: Vector2i) -> void:
 	selected_cell = Vector2i(-1, -1)
 	var a_cell: Dictionary = board.get_cell(a)
 	var b_cell: Dictionary = board.get_cell(b)
-	if int(a_cell["locked_turns"]) > 0 or int(b_cell["locked_turns"]) > 0:
+	if board.is_immovable(a) or board.is_immovable(b):
 		_redraw_game()
 		return
 	if not String(a_cell["special_effect_id"]).is_empty() or not String(b_cell["special_effect_id"]).is_empty():
@@ -1663,7 +2487,7 @@ func _play_swap_then_resolve(a: Vector2i, b: Vector2i) -> void:
 	is_animating_board = true
 	await _animate_swap(a, b, false)
 	board.swap(a, b)
-	_remap_swapped_cell_buttons(a, b)
+	await _sync_board_ui_after_swap()
 	var matches: Array = board.find_matches()
 	if matches.is_empty():
 		await _animate_swap_back(a, b)
@@ -1672,27 +2496,56 @@ func _play_swap_then_resolve(a: Vector2i, b: Vector2i) -> void:
 		is_animating_board = false
 		_redraw_game()
 		return
-	await _resolve_matches(matches, b)
+	_consume_run_action()
+	await _resolve_matches(matches, _preferred_spawn_after_swap(matches, a, b))
 	if boss_hp <= 0:
 		return
 	is_animating_board = false
 	_after_player_move()
 
+func _preferred_spawn_after_swap(matches: Array, first_pos: Vector2i, second_pos: Vector2i) -> Vector2i:
+	# After swapping, the piece selected first is now at second_pos and the
+	# piece selected second is at first_pos. Preserve whichever swapped cell
+	# actually participates in the resulting match. This keeps the moved
+	# matching piece rather than an unrelated piece or an arbitrary group head.
+	for group in matches:
+		var positions: Array = group.get("positions", [])
+		if positions.has(first_pos) and not positions.has(second_pos):
+			return first_pos
+		if positions.has(second_pos) and not positions.has(first_pos):
+			return second_pos
+	# Intersections can contain both swapped cells. Prefer the second selected
+	# destination for compatibility with the existing interaction behavior.
+	for group in matches:
+		var positions: Array = group.get("positions", [])
+		if positions.has(second_pos):
+			return second_pos
+		if positions.has(first_pos):
+			return first_pos
+	return Vector2i(-1, -1)
+
 func _play_swap_then_special_combo(a: Vector2i, b: Vector2i) -> void:
 	is_animating_board = true
 	await _animate_swap(a, b, false)
 	board.swap(a, b)
-	_remap_swapped_cell_buttons(a, b)
+	await _sync_board_ui_after_swap()
 	await _activate_special_combo(a, b)
 	is_animating_board = false
 
 func _activate_special(pos: Vector2i) -> void:
 	is_animating_board = true
 	var source_cell: Dictionary = board.get_cell(pos)
-	var targets: Array = board.collect_effect_targets(pos)
+	var targets: Array = _filter_clear_targets(board.collect_effect_targets(pos))
+	if targets.is_empty():
+		is_animating_board = false
+		_redraw_game()
+		return
+	_consume_run_action()
 	_charge_special_resonance(String(source_cell["piece_id"]), String(source_cell["special_effect_id"]), targets)
+	_charge_resonance_for_cleared_targets(targets)
+	_transfer_cleared_effects_to_boss(targets)
 	await _animate_clear(targets)
-	await _animate_attack_boss(targets)
+	_animate_attack_boss(targets)
 	_damage_boss(targets)
 	if boss_hp <= 0:
 		is_animating_board = false
@@ -1734,10 +2587,17 @@ func _activate_special_combo(a: Vector2i, b: Vector2i) -> void:
 					targets.append(p)
 	else:
 		targets = board.collect_effect_targets(a)
+	targets = _filter_clear_targets(targets)
+	if targets.is_empty():
+		_redraw_game()
+		return
+	_consume_run_action()
 	_charge_special_resonance(String(a_cell["piece_id"]), a_effect, targets)
 	_charge_special_resonance(String(b_cell["piece_id"]), b_effect, targets)
+	_charge_resonance_for_cleared_targets(targets)
+	_transfer_cleared_effects_to_boss(targets)
 	await _animate_clear(targets)
-	await _animate_attack_boss(targets)
+	_animate_attack_boss(targets)
 	_damage_boss(targets)
 	if boss_hp <= 0:
 		is_animating_board = false
@@ -1764,15 +2624,6 @@ func _resolve_matches(matches: Array, preferred_spawn: Vector2i, resolve_after: 
 				cleared.append(pos)
 		if not effect_id.is_empty():
 			spawn_specs.append({"pos": spawn_pos, "effect_id": effect_id, "direction": _direction_for_group(group)})
-		var piece_slot: int = _slot_index_for_piece_id(String(group["piece_id"]))
-		var charge_reason: String = "消除"
-		if piece_slot >= 0:
-			charge_reason = "消除%s" % SLOT_ATTRIBUTES[piece_slot]
-		_add_resonance(piece_slot, positions.size(), charge_reason)
-		if not effect_id.is_empty():
-			_add_resonance(4, 8 + max(0, positions.size() - 4) * 4, "生成特殊团子")
-			if piece_slot == 0:
-				_add_resonance(0, 6, "衍射特殊构型")
 		var piece: PieceDefinition = catalog.get_piece(String(group["piece_id"]))
 		var multiplier: float = 1.0 if piece == null else piece.multiplier
 		var base: int = 10
@@ -1784,24 +2635,63 @@ func _resolve_matches(matches: Array, preferred_spawn: Vector2i, resolve_after: 
 			base = 40
 		_add_score(roundi(base * multiplier * max(1, positions.size() - 2)))
 	stats["normal"] += 1
+	# Convert the chosen surviving instance in place. It keeps its piece id,
+	# stacked effects, and other runtime state; only its special behavior changes.
+	# Excluding it from the clear set also makes the icon visible before collapse.
+	for spec in spawn_specs:
+		var spawn_pos: Vector2i = spec["pos"]
+		if cleared.has(spawn_pos):
+			cleared.erase(spawn_pos)
+		var spawn_cell: Variant = board.get_cell(spawn_pos)
+		if spawn_cell != null:
+			spawn_cell["special_effect_id"] = spec["effect_id"]
+			spawn_cell["special_direction"] = spec["direction"]
+			board.set_cell(spawn_pos, spawn_cell)
+	if not spawn_specs.is_empty():
+		await _animate_special_creation(spawn_specs)
+	cleared = _filter_clear_targets(cleared)
+	if cleared.is_empty():
+		return
+	_charge_resonance_for_cleared_targets(cleared)
+	_transfer_cleared_effects_to_boss(cleared)
 	await _animate_clear(cleared)
-	await _animate_attack_boss(cleared)
+	_animate_attack_boss(cleared)
 	_damage_boss(cleared)
 	if boss_hp <= 0:
 		is_animating_board = false
 		_finish_battle()
 		return
 	board.clear_positions(cleared)
-	for spec in spawn_specs:
-		board.set_cell(spec["pos"], {
-			"piece_id": String(board.get_cell(spec["pos"])["piece_id"]) if board.get_cell(spec["pos"]) != null else String(matches[0]["piece_id"]),
-			"special_effect_id": spec["effect_id"],
-			"special_direction": spec["direction"],
-			"locked_turns": 0,
-		})
 	await _collapse_refill_and_animate()
 	if resolve_after:
 		await _resolve_cascades()
+
+func _animate_special_creation(spawn_specs: Array) -> void:
+	var created_buttons: Array[Button] = []
+	for spec in spawn_specs:
+		var pos: Vector2i = spec["pos"]
+		var old_button: Button = _get_cell_button(pos)
+		if old_button == null:
+			continue
+		var child_index: int = old_button.get_index()
+		board_grid.remove_child(old_button)
+		old_button.queue_free()
+		var special_button: Button = _make_cell_button(pos)
+		board_grid.add_child(special_button)
+		board_grid.move_child(special_button, child_index)
+		created_buttons.append(special_button)
+	if created_buttons.is_empty():
+		return
+	await get_tree().process_frame
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	for button in created_buttons:
+		button.pivot_offset = button.size * 0.5
+		button.scale = Vector2(0.72, 0.72)
+		button.modulate = Color(1.28, 1.18, 0.72, 1.0)
+		tween.tween_property(button, "scale", Vector2.ONE, SPECIAL_CREATE_SECONDS).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(button, "modulate", Color.WHITE, SPECIAL_CREATE_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await tween.finished
 
 func _resolve_cascades() -> void:
 	while true:
@@ -1812,7 +2702,6 @@ func _resolve_cascades() -> void:
 			break
 		combo += 1
 		max_combo = max(max_combo, combo)
-		_add_resonance(3, 6 + combo * 2, "连锁Combo")
 		await _resolve_matches(matches, Vector2i(-1, -1), false)
 		if boss_hp <= 0:
 			return
@@ -1854,6 +2743,13 @@ func _remap_swapped_cell_buttons(a: Vector2i, b: Vector2i) -> void:
 	button_a.set_meta("board_pos", b)
 	button_b.set_meta("board_pos", a)
 
+func _sync_board_ui_after_swap() -> void:
+	# GridContainer places children by child order, not by board_pos metadata.
+	# Rebuilding from the swapped model keeps both the matching piece and the
+	# non-matching piece at their actual destination before clear animations.
+	_redraw_game()
+	await get_tree().process_frame
+
 func _animate_clear(positions: Array) -> void:
 	var tween: Tween = create_tween()
 	tween.set_parallel(true)
@@ -1864,10 +2760,15 @@ func _animate_clear(positions: Array) -> void:
 			continue
 		animated = true
 		button.pivot_offset = button.size * 0.5
+		var sink_position: Vector2 = button.position + Vector2(0, button.size.y * 0.10)
+		tween.tween_property(button, "position", sink_position, CLEAR_ANIM_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tween.tween_property(button, "scale", Vector2(0.15, 0.15), CLEAR_ANIM_SECONDS).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 		tween.tween_property(button, "modulate:a", 0.0, CLEAR_ANIM_SECONDS)
 	if animated:
-		await tween.finished
+		# Release the gameplay flow before the fade finishes so collapse can
+		# begin during the final part of the clear animation. The old buttons
+		# remain visible until the drop overlay covers the transition.
+		await get_tree().create_timer(CLEAR_ANIM_SECONDS * CLEAR_DROP_OVERLAP_RATIO).timeout
 		await get_tree().create_timer(POST_CLEAR_PAUSE_SECONDS).timeout
 
 func _animate_attack_boss(positions: Array) -> void:
@@ -1924,8 +2825,12 @@ func _animate_attack_boss(positions: Array) -> void:
 
 func _collapse_refill_and_animate() -> void:
 	var drop_specs: Array = _collapse_refill_with_drop_specs()
-	_redraw_game()
 	await _animate_drop_specs(drop_specs)
+	_redraw_game()
+	# Newly added GridContainer children keep their default position until the
+	# next layout pass. Cascades can begin immediately after this function, so
+	# wait one frame before any clear animation reads their positions.
+	await get_tree().process_frame
 
 func _collapse_refill_with_drop_specs() -> Array:
 	var specs: Array = []
@@ -1953,55 +2858,105 @@ func _collapse_refill_with_drop_specs() -> Array:
 func _animate_drop_specs(specs: Array) -> void:
 	if board_grid == null or specs.is_empty():
 		return
-	var fall_tween: Tween = create_tween()
-	fall_tween.set_parallel(true)
-	var animated: bool = false
+	var overlay: Control = Control.new()
+	overlay.name = "DropAnimationOverlay"
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.z_index = 100
+	add_child(overlay)
 	var cell_size: float = _board_cell_size()
+	var buttons_by_pos: Dictionary = {}
+	var rects_by_pos: Dictionary = {}
+	var grid_cell_size: Vector2 = Vector2(cell_size, cell_size)
+	var grid_gap: Vector2 = Vector2(
+		float(board_grid.get_theme_constant("h_separation")),
+		float(board_grid.get_theme_constant("v_separation"))
+	)
+	for child in board_grid.get_children():
+		if child is Button and child.has_meta("board_pos"):
+			var grid_pos: Vector2i = child.get_meta("board_pos")
+			buttons_by_pos[grid_pos] = child
+			# Derive the slot rect from its row/column. The old button can still be
+			# scaled, faded, or shifted by the clear animation at this point.
+			var slot_offset: Vector2 = Vector2(grid_pos.x, grid_pos.y) * (grid_cell_size + grid_gap)
+			rects_by_pos[grid_pos] = Rect2(board_grid.global_position + slot_offset, grid_cell_size)
+	var animation_entries: Array = []
+	var animated: bool = false
 	for spec in specs:
 		var to_pos: Vector2i = spec["to"]
 		var from_pos: Vector2i = spec["from"]
-		var button: Button = _get_cell_button(to_pos)
-		if button == null:
-			continue
-		var final_position: Vector2 = button.position
+		var target_rect: Rect2 = rects_by_pos.get(to_pos, Rect2(board_grid.global_position + Vector2(to_pos.x, to_pos.y) * (cell_size + 2.0), Vector2(cell_size, cell_size)))
+		# Build the visual from the final piece instance at the destination.
+		# A match-created special already exists in the model before collapse;
+		# duplicating the old source button would keep showing its normal artwork
+		# until the final redraw instead of revealing the special before it falls.
+		var visual: Button = _make_cell_button(to_pos)
+		if not bool(spec.get("spawn", false)):
+			var source_button: Button = buttons_by_pos.get(from_pos)
+			if source_button == null:
+				visual.free()
+				continue
+			source_button.modulate.a = 0.0
+		visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		visual.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		# GridContainer may compress buttons below their custom minimum size.
+		# A duplicated button outside the container otherwise expands again and
+		# makes its artwork appear offset until the final redraw.
+		visual.custom_minimum_size = Vector2.ZERO
+		visual.size = target_rect.size
+		overlay.add_child(visual)
 		var row_delta: int = from_pos.y - to_pos.y
 		if bool(spec.get("spawn", false)):
 			row_delta -= DROP_SPAWN_EXTRA_ROWS
-		var start_position: Vector2 = final_position + Vector2(0, row_delta * (cell_size + 2.0))
-		var landing_position: Vector2 = final_position + Vector2(0, DROP_LANDING_OVERSHOOT)
-		button.position = start_position
-		button.pivot_offset = button.size * 0.5
-		button.scale = Vector2.ONE
+		var final_position: Vector2 = target_rect.position - overlay.global_position
+		var source_rect: Rect2 = rects_by_pos.get(from_pos, target_rect)
+		var start_position: Vector2 = source_rect.position - overlay.global_position
 		if bool(spec.get("spawn", false)):
-			button.modulate.a = 0.0
+			start_position = final_position + Vector2(0, row_delta * (cell_size + 2.0))
+			visual.modulate.a = 0.0
+		visual.position = start_position
+		visual.size = target_rect.size
+		visual.pivot_offset = visual.size * 0.5
+		visual.scale = Vector2(0.96, 1.04) if bool(spec.get("spawn", false)) else Vector2.ONE
 		animated = true
 		var drop_rows: int = abs(row_delta)
-		var duration: float = DROP_BASE_SECONDS + float(drop_rows) * DROP_SECONDS_PER_ROW
-		var delay: float = float(to_pos.x) * DROP_COLUMN_STAGGER_SECONDS
+		var duration: float = DROP_BASE_SECONDS + sqrt(float(max(1, drop_rows))) * DROP_SECONDS_PER_ROW
+		var delay: float = float(to_pos.x) * DROP_COLUMN_STAGGER_SECONDS + float(BoardModel.HEIGHT - 1 - to_pos.y) * 0.012
 		if bool(spec.get("spawn", false)):
-			delay += DROP_SPAWN_DELAY_SECONDS
-			fall_tween.tween_property(button, "modulate:a", 1.0, min(0.18, duration * 0.45)).set_delay(delay)
-		fall_tween.tween_property(button, "position", landing_position, duration).set_delay(delay).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			delay += DROP_SPAWN_DELAY_SECONDS + float(-from_pos.y - 1) * 0.025
+		animation_entries.append({
+			"visual": visual,
+			"final_position": final_position,
+			"duration": duration,
+			"delay": delay,
+			"spawn": bool(spec.get("spawn", false)),
+		})
 	if animated:
-		await fall_tween.finished
-		var settle_tween: Tween = create_tween()
-		settle_tween.set_parallel(true)
-		for spec in specs:
-			var button: Button = _get_cell_button(spec["to"])
-			if button == null:
-				continue
-			var final_position: Vector2 = button.position - Vector2(0, DROP_LANDING_OVERSHOOT)
-			button.scale = Vector2(1.04, 0.94)
-			settle_tween.tween_property(button, "position", final_position, DROP_SETTLE_SECONDS).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			settle_tween.tween_property(button, "scale", Vector2.ONE, DROP_SETTLE_SECONDS).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		await settle_tween.finished
+		# Let Godot draw the newly created final-state visuals once before any
+		# movement begins. Match-created specials are therefore visibly created
+		# at their source slot instead of first appearing mid-fall.
+		await get_tree().process_frame
+		var tween: Tween = create_tween()
+		tween.set_parallel(true)
+		for entry in animation_entries:
+			var visual: Button = entry["visual"]
+			var duration: float = entry["duration"]
+			var delay: float = entry["delay"]
+			if bool(entry["spawn"]):
+				tween.tween_property(visual, "modulate:a", 1.0, min(0.16, duration * 0.38)).set_delay(delay)
+			tween.tween_property(visual, "position", entry["final_position"], duration + DROP_SETTLE_SECONDS).set_delay(delay).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(visual, "scale", Vector2.ONE, duration + DROP_SETTLE_SECONDS).set_delay(delay).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		await tween.finished
 		await get_tree().create_timer(POST_DROP_PAUSE_SECONDS).timeout
+	# Remove the animation layer synchronously so the final board redraw in the
+	# caller replaces it in the same frame without a one-frame double image.
+	overlay.free()
 
 func _get_cell_button(pos: Vector2i) -> Button:
 	if board_grid == null:
 		return null
 	for child in board_grid.get_children():
-		if child is Button and child.has_meta("board_pos") and child.get_meta("board_pos") == pos:
+		if child is Button and not child.is_queued_for_deletion() and child.has_meta("board_pos") and child.get_meta("board_pos") == pos:
 			return child
 	return null
 
@@ -2031,12 +2986,11 @@ func _add_score(amount: int) -> void:
 	score += final_amount
 
 func _after_player_move() -> void:
+	if not _settle_player_action():
+		return
 	combo += 1
 	max_combo = max(max_combo, combo)
 	moves_since_enemy += 1
-	var locked_count: int = _locked_cell_count()
-	if locked_count > 0:
-		_add_resonance(2, min(6, locked_count), "锁定回合减少")
 	board.tick_locks()
 	if not board.has_possible_move():
 		_end_game()
@@ -2050,12 +3004,44 @@ func _after_player_move() -> void:
 			_redraw_game()
 			return
 		if rng.randf() <= _enemy_effect_chance():
+			if boss_frozen:
+				boss_frozen = false
+				_set_boss_effect_stacks("frost", 0)
+				_set_boss_status("霜渐使Boss跳过了本次行动。", "霜渐")
+				_redraw_game()
+				return
 			if _boss_phase() == 1 and rng.randf() <= 0.45:
 				_trigger_enemy_extra_skill()
 			else:
 				_trigger_enemy_effect()
 			return
 	_redraw_game()
+
+func _settle_player_action() -> bool:
+	var photo_stacks: int = _boss_effect_stacks("photo")
+	if photo_stacks > 0:
+		_apply_direct_boss_damage(photo_stacks * EFFECT_PHOTO_DAMAGE_PER_STACK, "光燥")
+		_set_boss_effect_stacks("photo", photo_stacks - 1)
+	var aero_stacks: int = _boss_effect_stacks("aero")
+	if aero_stacks > 0 and boss_hp > 0:
+		var aero_damage: int = max(1, roundi(float(boss_hp) * float(aero_stacks) / 100.0))
+		_apply_direct_boss_damage(aero_damage, "风蚀")
+		_set_boss_effect_stacks("aero", aero_stacks - 1)
+	if not boss_hp_infinite and boss_hp <= 0:
+		_finish_battle()
+		return false
+	if run_active and int(run_state.get("actions", 0)) <= 0:
+		_on_run_battle_lost()
+		return false
+	return true
+
+func _consume_run_action() -> void:
+	if run_active:
+		run_state["actions"] = max(0, int(run_state.get("actions", RUN_MAX_ACTIONS)) - 1)
+
+func _refund_run_action() -> void:
+	if run_active:
+		run_state["actions"] = min(RUN_MAX_ACTIONS, int(run_state.get("actions", 0)) + 1)
 
 func _enemy_check_interval() -> int:
 	if current_boss != null:
@@ -2076,7 +3062,6 @@ func _enemy_effect_chance() -> float:
 
 func _trigger_enemy_extra_skill() -> void:
 	_set_boss_status("%s进入濒危阶段，额外技能已触发。" % _current_boss_name(), "蓄力")
-	_add_resonance(2, 8, "大魔王额外技能")
 	_redraw_game()
 
 func _trigger_enemy_effect() -> void:
@@ -2086,17 +3071,14 @@ func _trigger_enemy_effect() -> void:
 	var roll: int = rng.randi_range(0, 2)
 	if roll == 0:
 		board.lock_random_cells(3)
-		_add_resonance(2, 10, "大魔王锁定")
 		_set_boss_status("团子大魔王：锁定了 3 个格子", "攻击")
 		_redraw_game()
 	elif roll == 1:
 		combo = 0
-		_add_resonance(2, 6, "大魔王打断")
 		_set_boss_status("团子大魔王：打断了 Combo", "怒")
 		_redraw_game()
 	else:
 		board.lock_random_cells(1)
-		_add_resonance(2, 5, "大魔王干扰")
 		_set_boss_status("团子大魔王：制造了锁定干扰", "扰")
 		_redraw_game()
 
@@ -2123,7 +3105,6 @@ func _apply_boss_skill_effect(effect_id: String, params: Dictionary) -> void:
 func _apply_boss_lock_cells(count: int, resonance: int, status_template: String) -> void:
 	count = max(1, count)
 	board.lock_random_cells(count)
-	_add_resonance(2, resonance, "大魔王锁定")
 	if status_template.contains("%d"):
 		_set_boss_status(status_template % [_current_boss_name(), count], "攻击")
 	elif status_template.contains("%s"):
@@ -2134,7 +3115,6 @@ func _apply_boss_lock_cells(count: int, resonance: int, status_template: String)
 
 func _apply_boss_break_combo(resonance: int) -> void:
 	combo = 0
-	_add_resonance(2, resonance, "大魔王打断")
 	_set_boss_status("%s：打断了 Combo" % _current_boss_name(), "怒")
 	_redraw_game()
 
@@ -2153,16 +3133,38 @@ func _resonance_cost(slot_index: int) -> int:
 	return 30
 
 func _is_resonance_ready(slot_index: int) -> bool:
+	if slot_index >= 0 and slot_index < current_roster.size() and current_roster[slot_index] == COLETTA_PIECE_ID:
+		return coletta_release_active and _resonance_value(slot_index) > 0
+	if slot_index >= 0 and slot_index < current_roster.size() and current_roster[slot_index] == KAKARO_PIECE_ID:
+		return kakaro_release_active and kakaro_releases_remaining > 0
 	return slot_index >= 0 and slot_index < SLOT_ATTRIBUTES.size() and _resonance_value(slot_index) >= _resonance_cost(slot_index)
+
+func _is_coletta_fully_charged() -> bool:
+	var slot_index: int = _slot_index_for_piece_id(COLETTA_PIECE_ID)
+	return slot_index >= 0 and _resonance_value(slot_index) >= _resonance_cost(slot_index)
+
+func _activate_kakaro_release_if_full() -> void:
+	var slot_index: int = _slot_index_for_piece_id(KAKARO_PIECE_ID)
+	if slot_index < 0 or kakaro_release_active or _resonance_value(slot_index) < _resonance_cost(slot_index):
+		return
+	var piece: PieceDefinition = catalog.get_piece(KAKARO_PIECE_ID)
+	kakaro_release_active = true
+	kakaro_releases_remaining = _param_int(piece.resonance_effect_params, "release_count", 5) if piece != null else 5
 
 func _add_resonance(slot_index: int, amount: int, _reason: String = "") -> void:
 	if slot_index < 0 or slot_index >= SLOT_ATTRIBUTES.size() or amount <= 0:
+		return
+	if slot_index < current_roster.size() and current_roster[slot_index] == KAKARO_PIECE_ID and kakaro_release_active:
 		return
 	if run_active:
 		amount = max(1, roundi(float(amount) * (1.0 + _collectible_total("resonance_mult"))))
 	while resonance_values.size() < SLOT_ATTRIBUTES.size():
 		resonance_values.append(0)
 	resonance_values[slot_index] = min(_resonance_cost(slot_index), resonance_values[slot_index] + amount)
+	if slot_index < current_roster.size() and current_roster[slot_index] == COLETTA_PIECE_ID and resonance_values[slot_index] >= _resonance_cost(slot_index):
+		coletta_release_active = true
+	if slot_index < current_roster.size() and current_roster[slot_index] == KAKARO_PIECE_ID:
+		_activate_kakaro_release_if_full()
 
 func _slot_index_for_piece_id(piece_id: String) -> int:
 	for index in range(current_roster.size()):
@@ -2170,37 +3172,76 @@ func _slot_index_for_piece_id(piece_id: String) -> int:
 			return index
 	return -1
 
-func _charge_special_resonance(piece_id: String, effect_id: String, targets: Array) -> void:
+func _charge_resonance_for_cleared_targets(targets: Array) -> void:
+	var cleared_counts: Dictionary = {}
+	for pos in _unique_in_bounds_targets(targets):
+		var cell: Variant = board.get_cell(pos)
+		if cell == null:
+			continue
+		var piece_id: String = String(cell["piece_id"])
+		cleared_counts[piece_id] = int(cleared_counts.get(piece_id, 0)) + 1
+	for slot_index in range(current_roster.size()):
+		var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index])
+		if piece == null or piece.resonance_gain_id != "clear_self":
+			continue
+		var cleared_count: int = int(cleared_counts.get(piece.id, 0))
+		if cleared_count > 0:
+			_add_resonance(slot_index, cleared_count * _param_int(piece.resonance_gain_params, "amount", 1), "消除%s" % piece.display_name)
+
+func _charge_special_resonance(_piece_id: String, effect_id: String, _targets: Array) -> void:
 	if effect_id.is_empty():
 		return
-	_add_resonance(1, 10 + int(targets.size() / 2), "特殊团子")
-	if _slot_index_for_piece_id(piece_id) == 0:
-		_add_resonance(0, 6, "衍射特消")
-	if targets.size() >= BoardModel.WIDTH:
-		_add_resonance(5, 8 + int(targets.size() / 2), "大范围导电")
+	for slot_index in range(current_roster.size()):
+		var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index])
+		if piece == null or piece.resonance_gain_id != "use_special":
+			continue
+		if _param_text(piece.resonance_gain_params, "special_effect_id", "") == effect_id:
+			_add_resonance(slot_index, _param_int(piece.resonance_gain_params, "amount", 1), "使用%s团子" % effect_id)
 
-func _release_resonance(slot_index: int) -> void:
+func _release_resonance(slot_index: int, release_target_cell: Vector2i = Vector2i(-1, -1), target_orientation: String = "horizontal") -> void:
 	if board == null or is_animating_board or not _is_resonance_ready(slot_index):
 		return
 	is_animating_board = true
-	var release_target_cell: Vector2i = selected_cell
+	if release_target_cell == Vector2i(-1, -1):
+		release_target_cell = selected_cell
 	selected_cell = Vector2i(-1, -1)
 	var released: bool = false
+	_consume_run_action()
 	var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index]) if slot_index < current_roster.size() else null
 	if piece != null:
-		released = await _apply_resonance_effect(piece, release_target_cell)
+		released = await _apply_resonance_effect(piece, release_target_cell, target_orientation)
 	if released:
-		resonance_values[slot_index] = 0
+		if piece != null and piece.id == COLETTA_PIECE_ID:
+			resonance_values[slot_index] = max(0, resonance_values[slot_index] - 1)
+			if resonance_values[slot_index] <= 0:
+				coletta_release_active = false
+		elif piece != null and piece.id == KAKARO_PIECE_ID:
+			_consume_kakaro_release(slot_index, piece)
+		else:
+			resonance_values[slot_index] = 0
 		if boss_hp <= 0:
 			return
 		is_animating_board = false
 		_after_player_move()
 	else:
+		_refund_run_action()
 		is_animating_board = false
 		_set_boss_status("%s共鸣解放没有合法目标" % SLOT_ATTRIBUTES[slot_index], "共鸣")
 		_redraw_game()
 
-func _apply_resonance_effect(piece: PieceDefinition, release_target_cell: Vector2i) -> bool:
+func _consume_kakaro_release(slot_index: int, piece: PieceDefinition = null) -> void:
+	if not kakaro_release_active or kakaro_releases_remaining <= 0:
+		return
+	if piece == null:
+		piece = catalog.get_piece(KAKARO_PIECE_ID)
+	kakaro_releases_remaining = max(0, kakaro_releases_remaining - 1)
+	var release_count: int = max(1, _param_int(piece.resonance_effect_params, "release_count", 5)) if piece != null else 5
+	resonance_values[slot_index] = roundi(float(_resonance_cost(slot_index) * kakaro_releases_remaining) / float(release_count))
+	if kakaro_releases_remaining <= 0:
+		kakaro_release_active = false
+		resonance_values[slot_index] = 0
+
+func _apply_resonance_effect(piece: PieceDefinition, release_target_cell: Vector2i, target_orientation: String = "horizontal") -> bool:
 	var params: Dictionary = piece.resonance_effect_params
 	match piece.resonance_effect_id:
 		"create_special_pieces":
@@ -2216,6 +3257,14 @@ func _apply_resonance_effect(piece: PieceDefinition, release_target_cell: Vector
 			return await _release_clear_targets(_square_targets(center, _param_int(params, "radius", 1)), _param_int(params, "score", 160), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "共鸣"))
 		"clear_random_cross":
 			return await _release_clear_targets(_targets_for_random_cross(), _param_int(params, "score", 170), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "共鸣"))
+		"clear_line":
+			if release_target_cell == Vector2i(-1, -1):
+				return false
+			return await _release_clear_targets(_targets_for_line(release_target_cell, target_orientation), _param_int(params, "score", 120), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "冷凝"))
+		"clear_target_cross":
+			if release_target_cell == Vector2i(-1, -1):
+				return false
+			return await _release_clear_targets(_targets_for_small_cross(release_target_cell), _param_int(params, "score", 120), _param_text(params, "status", "%s共鸣解放" % piece.display_name), _param_text(params, "avatar", "导电"), _param_float(params, "damage_multiplier", 2.0))
 		"none", "":
 			return false
 	push_warning("Unsupported resonance effect_id: %s" % piece.resonance_effect_id)
@@ -2255,16 +3304,7 @@ func _release_cleanse_locks(params: Dictionary) -> bool:
 	return true
 
 func _release_shuffle_board(params: Dictionary) -> bool:
-	var piece_ids: Array = []
-	for y in range(BoardModel.HEIGHT):
-		for x in range(BoardModel.WIDTH):
-			piece_ids.append(String(board.cells[y][x]["piece_id"]))
-	piece_ids.shuffle()
-	var index: int = 0
-	for y in range(BoardModel.HEIGHT):
-		for x in range(BoardModel.WIDTH):
-			board.cells[y][x]["piece_id"] = piece_ids[index]
-			index += 1
+	_shuffle_movable_piece_instances()
 	_add_score(_param_int(params, "score", 120))
 	_set_boss_status(_param_text(params, "status", "共鸣解放：重排棋盘"), _param_text(params, "avatar", "共鸣"))
 	_redraw_game()
@@ -2330,28 +3370,34 @@ func _release_condensation() -> bool:
 	return true
 
 func _release_aero() -> bool:
-	var piece_ids: Array = []
-	for y in range(BoardModel.HEIGHT):
-		for x in range(BoardModel.WIDTH):
-			piece_ids.append(String(board.cells[y][x]["piece_id"]))
-	piece_ids.shuffle()
-	var index: int = 0
-	for y in range(BoardModel.HEIGHT):
-		for x in range(BoardModel.WIDTH):
-			board.cells[y][x]["piece_id"] = piece_ids[index]
-			index += 1
+	_shuffle_movable_piece_instances()
 	_add_score(120)
 	_set_boss_status("气动共鸣解放：重排棋盘", "气动")
 	_redraw_game()
 	return true
 
-func _release_clear_targets(targets: Array, base_score: int, status_text: String, avatar_text: String = "共鸣") -> bool:
-	targets = _unique_in_bounds_targets(targets)
+func _shuffle_movable_piece_instances() -> void:
+	var positions: Array = []
+	var shuffled_cells: Array = []
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			var pos: Vector2i = Vector2i(x, y)
+			if not board.is_immovable(pos):
+				positions.append(pos)
+				shuffled_cells.append(board.get_cell(pos))
+	shuffled_cells.shuffle()
+	for index in range(positions.size()):
+		board.set_cell(positions[index], shuffled_cells[index])
+
+func _release_clear_targets(targets: Array, base_score: int, status_text: String, avatar_text: String = "共鸣", damage_multiplier: float = 1.0) -> bool:
+	targets = _filter_clear_targets(targets, true)
 	if targets.is_empty():
 		return false
+	_charge_resonance_for_cleared_targets(targets)
+	_transfer_cleared_effects_to_boss(targets)
 	await _animate_clear(targets)
-	await _animate_attack_boss(targets)
-	_damage_boss(targets)
+	_animate_attack_boss(targets)
+	_damage_boss(targets, damage_multiplier)
 	if boss_hp <= 0:
 		is_animating_board = false
 		_finish_battle()
@@ -2394,6 +3440,25 @@ func _targets_for_random_cross() -> Array:
 		targets.append(Vector2i(column, y))
 	return _unique_in_bounds_targets(targets)
 
+func _targets_for_line(target_cell: Vector2i, orientation: String) -> Array:
+	var targets: Array = []
+	if orientation == "vertical":
+		for y in range(BoardModel.HEIGHT):
+			targets.append(Vector2i(target_cell.x, y))
+	else:
+		for x in range(BoardModel.WIDTH):
+			targets.append(Vector2i(x, target_cell.y))
+	return targets
+
+func _targets_for_small_cross(center: Vector2i) -> Array:
+	return _unique_in_bounds_targets([
+		center,
+		center + Vector2i.LEFT,
+		center + Vector2i.RIGHT,
+		center + Vector2i.UP,
+		center + Vector2i.DOWN,
+	])
+
 func _unique_in_bounds_targets(targets: Array) -> Array:
 	var result: Array = []
 	for pos in targets:
@@ -2413,9 +3478,9 @@ func _locked_cell_count() -> int:
 
 func _set_boss_status(text: String, avatar_text: String = "魔王") -> void:
 	boss_status_text = text
-	if boss_label != null:
+	if is_instance_valid(boss_label):
 		boss_label.text = text
-	if boss_avatar != null:
+	if is_instance_valid(boss_avatar):
 		boss_avatar.text = avatar_text
 
 func _build_cheat_panel() -> void:
@@ -2499,6 +3564,47 @@ func _build_cheat_panel() -> void:
 	edit_grid.add_child(_make_cheat_label("锁定回合"))
 	cheat_lock_spin = _make_cheat_spin(0, 9)
 	edit_grid.add_child(cheat_lock_spin)
+	edit_grid.add_child(_make_cheat_label("叠层效应"))
+	cheat_effect_stack_option = OptionButton.new()
+	for effect_id in EFFECT_LIMITS.keys():
+		cheat_effect_stack_option.add_item(String(EFFECT_NAMES[effect_id]))
+		cheat_effect_stack_option.set_item_metadata(cheat_effect_stack_option.get_item_count() - 1, effect_id)
+	cheat_effect_stack_option.item_selected.connect(func(_index: int) -> void: _update_cheat_effect_spins())
+	edit_grid.add_child(cheat_effect_stack_option)
+	edit_grid.add_child(_make_cheat_label("效应层数"))
+	cheat_effect_stack_spin = _make_cheat_spin(0, 10)
+	edit_grid.add_child(cheat_effect_stack_spin)
+	edit_grid.add_child(_make_cheat_label("Boss层数"))
+	cheat_boss_effect_stack_spin = _make_cheat_spin(0, 10)
+	edit_grid.add_child(cheat_boss_effect_stack_spin)
+	var effect_row: HBoxContainer = HBoxContainer.new()
+	effect_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(effect_row)
+	effect_row.add_child(_make_button("应用团子效应", Callable(self, "_cheat_apply_piece_effect")))
+	effect_row.add_child(_make_button("清空团子效应", Callable(self, "_cheat_clear_piece_effects")))
+	effect_row.add_child(_make_button("应用Boss效应", Callable(self, "_cheat_apply_boss_effect")))
+	effect_row.add_child(_make_button("清空Boss效应", Callable(self, "_cheat_clear_boss_effects")))
+	var resonance_grid: GridContainer = GridContainer.new()
+	resonance_grid.columns = 2
+	resonance_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(resonance_grid)
+	resonance_grid.add_child(_make_cheat_label("共鸣团子"))
+	cheat_resonance_slot_option = OptionButton.new()
+	cheat_resonance_slot_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cheat_resonance_slot_option.item_selected.connect(func(_index: int) -> void:
+		_update_cheat_resonance_spin_from_slot()
+	)
+	resonance_grid.add_child(cheat_resonance_slot_option)
+	resonance_grid.add_child(_make_cheat_label("共鸣能量"))
+	cheat_resonance_spin = _make_cheat_spin(0, 999)
+	resonance_grid.add_child(cheat_resonance_spin)
+	var resonance_row: HBoxContainer = HBoxContainer.new()
+	resonance_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	resonance_row.add_theme_constant_override("separation", 10)
+	box.add_child(resonance_row)
+	resonance_row.add_child(_make_button("应用共鸣能量", Callable(self, "_cheat_apply_resonance")))
+	resonance_row.add_child(_make_button("共鸣充满", Callable(self, "_cheat_fill_resonance")))
+	resonance_row.add_child(_make_button("共鸣清空", Callable(self, "_cheat_clear_resonance")))
 	var boss_row: HBoxContainer = HBoxContainer.new()
 	boss_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	boss_row.add_theme_constant_override("separation", 10)
@@ -2555,11 +3661,13 @@ func _cheat_apply_cell() -> void:
 	var piece_id: String = String(cheat_piece_option.get_selected_metadata())
 	var effect_id: String = String(cheat_effect_option.get_selected_metadata())
 	var direction: String = String(cheat_direction_option.get_selected_metadata())
+	var previous_cell: Dictionary = board.get_cell(pos)
 	board.set_cell(pos, {
 		"piece_id": piece_id,
 		"special_effect_id": effect_id,
 		"special_direction": direction,
 		"locked_turns": int(cheat_lock_spin.value),
+		"effects": previous_cell.get("effects", {}).duplicate(true),
 	})
 	_set_boss_status("作弊器：已修改 (%d,%d)" % [pos.x, pos.y], "作弊")
 	_redraw_game()
@@ -2577,21 +3685,311 @@ func _cheat_clear_cell_special() -> void:
 	_set_boss_status("作弊器：已清除 (%d,%d) 状态" % [pos.x, pos.y], "作弊")
 	_redraw_game()
 
+func _selected_stack_effect_id() -> String:
+	if cheat_effect_stack_option == null or cheat_effect_stack_option.get_item_count() <= 0:
+		return ""
+	return String(cheat_effect_stack_option.get_selected_metadata())
+
+func _cheat_apply_piece_effect() -> void:
+	var pos: Vector2i = _cheat_target_pos()
+	var effect_id: String = _selected_stack_effect_id()
+	if board == null or not board.in_bounds(pos) or effect_id.is_empty():
+		return
+	_set_piece_effect_stacks(pos, effect_id, int(cheat_effect_stack_spin.value))
+
+func _set_piece_effect_stacks(pos: Vector2i, effect_id: String, amount: int, resolve_triggers: bool = true) -> int:
+	if board == null:
+		return 0
+	var value: int = board.set_effect_stacks(pos, effect_id, amount)
+	if resolve_triggers:
+		_resolve_piece_effect_triggers()
+	return value
+
+func _add_piece_effect_stacks(pos: Vector2i, effect_id: String, amount: int, resolve_triggers: bool = true) -> int:
+	if board == null or not board.in_bounds(pos):
+		return 0
+	var cell: Dictionary = board.get_cell(pos)
+	return _set_piece_effect_stacks(pos, effect_id, board.effect_stacks(cell, effect_id) + amount, resolve_triggers)
+
+func _cheat_clear_piece_effects() -> void:
+	var pos: Vector2i = _cheat_target_pos()
+	if board == null or not board.in_bounds(pos):
+		return
+	var cell: Dictionary = board.get_cell(pos)
+	cell["effects"] = {}
+	board.set_cell(pos, cell)
+	_redraw_game()
+
+func _cheat_apply_boss_effect() -> void:
+	var effect_id: String = _selected_stack_effect_id()
+	if effect_id.is_empty():
+		return
+	_set_boss_effect_stacks(effect_id, int(cheat_boss_effect_stack_spin.value))
+	if boss_hp <= 0 and not boss_hp_infinite:
+		_finish_battle()
+	else:
+		_redraw_game()
+
+func _cheat_clear_boss_effects() -> void:
+	_reset_boss_effects()
+	_redraw_game()
+
+func _update_cheat_effect_spins() -> void:
+	var effect_id: String = _selected_stack_effect_id()
+	if effect_id.is_empty():
+		return
+	var limit: int = int(EFFECT_LIMITS[effect_id])
+	if cheat_effect_stack_spin != null:
+		cheat_effect_stack_spin.max_value = limit
+	if cheat_boss_effect_stack_spin != null:
+		cheat_boss_effect_stack_spin.max_value = limit
+	var pos: Vector2i = _cheat_target_pos()
+	if cheat_effect_stack_spin != null and board != null and board.in_bounds(pos):
+		cheat_effect_stack_spin.value = board.effect_stacks(board.get_cell(pos), effect_id)
+	if cheat_boss_effect_stack_spin != null:
+		cheat_boss_effect_stack_spin.value = _boss_effect_stacks(effect_id)
+
+func _resolve_piece_effect_triggers() -> void:
+	if board == null or is_animating_board:
+		return
+	is_animating_board = true
+	var guard: int = 0
+	while guard < BoardModel.WIDTH * BoardModel.HEIGHT:
+		guard += 1
+		var explosive_pos: Vector2i = _find_full_effect_piece("explosive")
+		if explosive_pos == Vector2i(-1, -1):
+			break
+		for y in range(explosive_pos.y - 2, explosive_pos.y + 3):
+			for x in range(explosive_pos.x - 2, explosive_pos.x + 3):
+				var ring_pos: Vector2i = Vector2i(x, y)
+				if board.in_bounds(ring_pos) and max(abs(x - explosive_pos.x), abs(y - explosive_pos.y)) == 2:
+					board.add_effect_stacks(ring_pos, "explosive", 2)
+		var targets: Array = _filter_clear_targets(_square_targets(explosive_pos, 1))
+		if not targets.has(explosive_pos):
+			board.set_effect_stacks(explosive_pos, "explosive", 0)
+		if not targets.is_empty():
+			_transfer_cleared_effects_to_boss(targets)
+			_charge_resonance_for_cleared_targets(targets)
+			await _animate_clear(targets)
+			_animate_attack_boss(targets)
+			_damage_boss(targets)
+			if boss_hp <= 0 and not boss_hp_infinite:
+				is_animating_board = false
+				_finish_battle()
+				return
+			board.clear_positions(targets)
+			await _collapse_refill_and_animate()
+	await _resolve_conductive_gather()
+	await _resolve_cascades()
+	is_animating_board = false
+	_redraw_game()
+
+func _find_full_effect_piece(effect_id: String) -> Vector2i:
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			var pos: Vector2i = Vector2i(x, y)
+			var cell: Variant = board.get_cell(pos)
+			if cell != null and board.effect_stacks(cell, effect_id) >= int(EFFECT_LIMITS[effect_id]):
+				return pos
+	return Vector2i(-1, -1)
+
+func _resolve_conductive_gather() -> void:
+	var sources: Array = []
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			var pos: Vector2i = Vector2i(x, y)
+			var cell: Variant = board.get_cell(pos)
+			if cell != null and board.effect_stacks(cell, "conductive") >= int(EFFECT_LIMITS["conductive"]):
+				sources.append(pos)
+	if sources.size() < 2:
+		return
+	var pairs: Array = _pair_conductive_sources(sources)
+	var path_targets: Array = []
+	var destinations: Array = []
+	for pair in pairs:
+		var first: Vector2i = pair[0]
+		var second: Vector2i = pair[1]
+		var attraction: Dictionary = _electromagnetic_attraction(first, second)
+		destinations.append([attraction["first_destination"], attraction["second_destination"]])
+		for target in attraction["cleared_path"]:
+			if not sources.has(target) and not path_targets.has(target):
+				path_targets.append(target)
+	path_targets = _filter_clear_targets(path_targets)
+	await _animate_electromagnetic_attraction(pairs, destinations, path_targets)
+	if not path_targets.is_empty():
+		_transfer_cleared_effects_to_boss(path_targets)
+		_charge_resonance_for_cleared_targets(path_targets)
+		await _animate_clear(path_targets)
+		_animate_attack_boss(path_targets)
+		_damage_boss(path_targets)
+		board.clear_positions(path_targets)
+	var preserved_pieces: Array = []
+	for pair_index in range(pairs.size()):
+		var pair: Array = pairs[pair_index]
+		var first: Vector2i = pair[0]
+		var second: Vector2i = pair[1]
+		var first_piece: Dictionary = board.get_cell(first).duplicate(true)
+		var second_piece: Dictionary = board.get_cell(second).duplicate(true)
+		first_piece["effects"].erase("conductive")
+		second_piece["effects"].erase("conductive")
+		preserved_pieces.append([first_piece, second_piece, destinations[pair_index][0], destinations[pair_index][1]])
+		board.set_cell(first, null)
+		board.set_cell(second, null)
+	await _collapse_refill_and_animate()
+	for preserved in preserved_pieces:
+		board.set_cell(preserved[2], preserved[0])
+		board.set_cell(preserved[3], preserved[1])
+	_redraw_game()
+
+func _animate_electromagnetic_attraction(pairs: Array, destinations: Array, path_targets: Array) -> void:
+	if board_grid == null:
+		return
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	var animated: bool = false
+	for pair_index in range(pairs.size()):
+		var pair: Array = pairs[pair_index]
+		var pair_destinations: Array = destinations[pair_index]
+		for piece_index in range(2):
+			var source: Vector2i = pair[piece_index]
+			var destination: Vector2i = pair_destinations[piece_index]
+			var source_button: Button = _get_cell_button(source)
+			var destination_button: Button = _get_cell_button(destination)
+			if source_button == null or destination_button == null:
+				continue
+			animated = true
+			source_button.z_index = 40
+			source_button.pivot_offset = source_button.size * 0.5
+			tween.tween_property(source_button, "position", destination_button.position, ELECTROMAGNETIC_MOVE_SECONDS).set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_IN_OUT)
+			tween.tween_property(source_button, "scale", Vector2(1.12, 1.12), ELECTROMAGNETIC_MOVE_SECONDS * 0.48).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(source_button, "scale", Vector2.ONE, ELECTROMAGNETIC_MOVE_SECONDS * 0.52).set_delay(ELECTROMAGNETIC_MOVE_SECONDS * 0.48).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(source_button, "modulate", Color(0.72, 0.92, 1.25, 1.0), ELECTROMAGNETIC_MOVE_SECONDS * 0.45)
+			tween.tween_property(source_button, "modulate", Color.WHITE, ELECTROMAGNETIC_MOVE_SECONDS * 0.55).set_delay(ELECTROMAGNETIC_MOVE_SECONDS * 0.45)
+	for target in path_targets:
+		var path_button: Button = _get_cell_button(target)
+		if path_button == null:
+			continue
+		animated = true
+		path_button.pivot_offset = path_button.size * 0.5
+		tween.tween_property(path_button, "modulate", Color(0.34, 0.62, 0.92, 0.42), ELECTROMAGNETIC_MOVE_SECONDS * 0.72).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		tween.tween_property(path_button, "scale", Vector2(0.82, 0.82), ELECTROMAGNETIC_MOVE_SECONDS * 0.72).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	if animated:
+		await tween.finished
+		await get_tree().create_timer(0.08).timeout
+
+func _pair_conductive_sources(sources: Array) -> Array:
+	var remaining: Array = sources.duplicate()
+	var pairs: Array = []
+	while remaining.size() >= 2:
+		var first: Vector2i = remaining.pop_front()
+		var nearest_index: int = 0
+		var nearest_distance: int = 999999
+		for index in range(remaining.size()):
+			var candidate: Vector2i = remaining[index]
+			var distance: int = abs(first.x - candidate.x) + abs(first.y - candidate.y)
+			if distance < nearest_distance:
+				nearest_distance = distance
+				nearest_index = index
+		var second: Vector2i = remaining.pop_at(nearest_index)
+		pairs.append([first, second])
+	return pairs
+
+func _horizontal_then_vertical_path(start: Vector2i, destination: Vector2i) -> Array:
+	var result: Array = []
+	var cursor: Vector2i = start
+	while cursor.x != destination.x:
+		cursor.x += 1 if destination.x > cursor.x else -1
+		result.append(cursor)
+	while cursor.y != destination.y:
+		cursor.y += 1 if destination.y > cursor.y else -1
+		result.append(cursor)
+	return result
+
+func _electromagnetic_attraction(first: Vector2i, second: Vector2i) -> Dictionary:
+	var full_path: Array = [first]
+	full_path.append_array(_horizontal_then_vertical_path(first, second))
+	var first_index: int = (full_path.size() - 2) / 2
+	var second_index: int = first_index + 1
+	return {
+		"first_destination": full_path[first_index],
+		"second_destination": full_path[second_index],
+		"cleared_path": full_path.slice(1, full_path.size() - 1),
+	}
+
+func _cheat_selected_resonance_slot() -> int:
+	if cheat_resonance_slot_option == null or cheat_resonance_slot_option.get_item_count() <= 0:
+		return -1
+	return int(cheat_resonance_slot_option.get_selected_metadata())
+
+func _update_cheat_resonance_options() -> void:
+	if cheat_resonance_slot_option == null:
+		return
+	var selected_metadata: Variant = null
+	if cheat_resonance_slot_option.get_item_count() > 0:
+		selected_metadata = cheat_resonance_slot_option.get_selected_metadata()
+	cheat_resonance_slot_option.clear()
+	for slot_index in range(current_roster.size()):
+		var piece: PieceDefinition = catalog.get_piece(current_roster[slot_index])
+		var piece_name: String = piece.display_name if piece != null else "空槽"
+		cheat_resonance_slot_option.add_item("%d. %s" % [slot_index + 1, piece_name])
+		cheat_resonance_slot_option.set_item_metadata(cheat_resonance_slot_option.get_item_count() - 1, slot_index)
+	if cheat_resonance_slot_option.get_item_count() <= 0:
+		return
+	_select_option_by_metadata(cheat_resonance_slot_option, selected_metadata)
+	_update_cheat_resonance_spin_from_slot()
+
+func _update_cheat_resonance_spin_from_slot() -> void:
+	if cheat_resonance_spin == null:
+		return
+	var slot_index: int = _cheat_selected_resonance_slot()
+	if slot_index < 0:
+		cheat_resonance_spin.value = 0
+		return
+	cheat_resonance_spin.max_value = _resonance_cost(slot_index)
+	cheat_resonance_spin.value = _resonance_value(slot_index)
+
+func _cheat_set_resonance(slot_index: int, value: int) -> void:
+	if slot_index < 0 or slot_index >= SLOT_ATTRIBUTES.size():
+		return
+	while resonance_values.size() < SLOT_ATTRIBUTES.size():
+		resonance_values.append(0)
+	var cost: int = _resonance_cost(slot_index)
+	resonance_values[slot_index] = clamp(value, 0, cost)
+	if slot_index < current_roster.size() and current_roster[slot_index] == COLETTA_PIECE_ID:
+		coletta_release_active = resonance_values[slot_index] >= cost
+	if slot_index < current_roster.size() and current_roster[slot_index] == KAKARO_PIECE_ID:
+		kakaro_release_active = false
+		kakaro_releases_remaining = 0
+		_activate_kakaro_release_if_full()
+	_set_boss_status("作弊器：%s共鸣能量调整为 %d/%d" % [SLOT_ATTRIBUTES[slot_index], resonance_values[slot_index], cost], "作弊")
+	_redraw_game()
+
+func _cheat_apply_resonance() -> void:
+	if cheat_resonance_spin == null:
+		return
+	_cheat_set_resonance(_cheat_selected_resonance_slot(), int(cheat_resonance_spin.value))
+
+func _cheat_fill_resonance() -> void:
+	var slot_index: int = _cheat_selected_resonance_slot()
+	_cheat_set_resonance(slot_index, _resonance_cost(slot_index))
+
+func _cheat_clear_resonance() -> void:
+	_cheat_set_resonance(_cheat_selected_resonance_slot(), 0)
+
 func _cheat_boss_lock_three() -> void:
 	board.lock_random_cells(3)
-	_add_resonance(2, 10, "作弊器锁定")
 	_set_boss_status("作弊器：团子大魔王锁定了 3 个格子", "攻击")
 	_redraw_game()
 
 func _cheat_boss_break_combo() -> void:
 	combo = 0
-	_add_resonance(2, 6, "作弊器打断")
 	_set_boss_status("作弊器：团子大魔王打断了 Combo", "怒")
 	_redraw_game()
 
 func _cheat_boss_kill() -> void:
-	if board == null or is_animating_board or boss_hp <= 0:
+	if board == null or is_animating_board or (not boss_hp_infinite and boss_hp <= 0):
 		return
+	boss_hp_infinite = false
 	boss_hp = 0
 	_update_boss_hp_ui()
 	_set_boss_status("作弊器：Boss 血量已清 0", "胜利")
@@ -2619,18 +4017,22 @@ func _update_cheat_panel_from_selection() -> void:
 	_select_option_by_metadata(cheat_direction_option, String(cell["special_direction"]))
 	if cheat_lock_spin != null:
 		cheat_lock_spin.value = int(cell["locked_turns"])
+	_update_cheat_effect_spins()
+	_update_cheat_resonance_options()
 
-func _select_option_by_metadata(option: OptionButton, value: String) -> void:
+func _select_option_by_metadata(option: OptionButton, value: Variant) -> void:
 	if option == null:
 		return
 	for i in range(option.get_item_count()):
-		if String(option.get_item_metadata(i)) == value:
+		var item_metadata: Variant = option.get_item_metadata(i)
+		if item_metadata == value or str(item_metadata) == str(value):
 			option.select(i)
 			return
 	option.select(0)
 
 func _on_run_battle_won() -> void:
 	var node_type: String = String(current_run_node.get("type", "battle"))
+	run_state["actions"] = clamp(int(run_state.get("actions", RUN_MAX_ACTIONS)) + RUN_BATTLE_ACTION_RECOVERY, 0, RUN_MAX_ACTIONS)
 	_apply_run_heal_after_battle()
 	if node_type == "boss":
 		_advance_run_after_node()
@@ -2643,6 +4045,9 @@ func _on_run_battle_lost() -> void:
 	if int(run_state.get("lives", 0)) <= 0:
 		_finish_run_failed()
 		return
+	# Spending a life starts a fresh retry; otherwise an action-exhaustion loss
+	# would return to the map with zero actions and could never be retried.
+	run_state["actions"] = RUN_MAX_ACTIONS
 	_clear_screen()
 	current_screen = "run_loss"
 	_add_title("战斗失利")
