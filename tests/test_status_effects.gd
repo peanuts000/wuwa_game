@@ -41,6 +41,7 @@ func _test_match_immunity(board: BoardModel) -> void:
 func _test_boss_runtime(catalog: PieceCatalog, board: BoardModel) -> void:
 	var game: Control = MainScript.new()
 	game.catalog = catalog
+	game.current_roster = catalog.get_default_roster()
 	game.board = board
 	game.current_boss = catalog.get_default_boss()
 	game.boss_hp_infinite = false
@@ -61,7 +62,7 @@ func _test_boss_runtime(catalog: PieceCatalog, board: BoardModel) -> void:
 	board.set_effect_stacks(first, "conductive", 4)
 	board.set_effect_stacks(second, "conductive", 4)
 	game._transfer_cleared_effects_to_boss([first, second])
-	assert(game._boss_effect_stacks("conductive") == 6, "multiple cleared pieces must merge and clamp on the boss")
+	assert(game._boss_effect_stacks("conductive") == 8, "千咲在队时 Boss 导电应可超过原六层上限")
 	board.set_effect_stacks(first, "frost", 3)
 	assert(not game._filter_clear_targets([first]).has(first), "the first clear must thaw rather than remove a frozen piece")
 	assert(board.effect_stacks(board.get_cell(first), "frost") == 0, "thawing must clear frost stacks")
@@ -72,6 +73,8 @@ func _test_boss_runtime(catalog: PieceCatalog, board: BoardModel) -> void:
 	game._set_boss_effect_stacks("annihilation", 6)
 	assert(game._effective_boss_defense() == 18, "six annihilation stacks should reduce defense 20 by 12 percent")
 	game._set_boss_effect_stacks("explosive", 10)
+	assert(game.boss_hp == 100 and game._boss_effect_stacks("explosive") == 10, "千咲应将 Boss 聚爆触发点提高到 13")
+	game._set_boss_effect_stacks("explosive", 13)
 	assert(game.boss_hp == 70 and game._boss_effect_stacks("explosive") == 0, "full boss explosive must deal 30 and clear")
 	game.boss_hp = 100
 	game._set_boss_effect_stacks("photo", 2)

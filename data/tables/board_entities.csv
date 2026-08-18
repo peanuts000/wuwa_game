@@ -1,0 +1,3 @@
+id,name,texture,clicked_texture,click_effect_id,click_effect_params,can_swap,affected_by_gravity,can_match,description
+sun_spirit_gold,日灵·金,res://assets/entities/sun_spirit_gold.png,res://assets/entities/sun_spirit_gold.png,clear_area_and_convert_energy,"{""radius"":1,""normal_cost"":2,""special_gain"":2}",FALSE,TRUE,FALSE,点击后清除周围3×3范围内的团子并转化西格莉卡能量。
+sun_spirit_blue,日灵·蓝,res://assets/entities/sun_spirit_blue.png,res://assets/entities/sun_spirit_blue.png,clear_area_and_convert_energy,"{""radius"":1,""normal_cost"":2,""special_gain"":2}",FALSE,TRUE,FALSE,点击后清除周围3×3范围内的团子并转化西格莉卡能量。

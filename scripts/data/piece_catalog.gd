@@ -3,17 +3,20 @@ class_name PieceCatalog
 
 const BossDefinitionScript := preload("res://scripts/data/boss_definition.gd")
 const CollectibleDefinitionScript := preload("res://scripts/data/collectible_definition.gd")
+const EchoDefinitionScript := preload("res://scripts/data/echo_definition.gd")
 const PIECES_DIR := "res://data/pieces"
 const EFFECTS_DIR := "res://data/effects"
 const TABLES_DIR := "res://data/tables"
 const PIECES_TABLE := TABLES_DIR + "/pieces.csv"
 const BOSSES_TABLE := TABLES_DIR + "/bosses.csv"
 const COLLECTIBLES_TABLE := TABLES_DIR + "/collectibles.csv"
+const BOARD_ENTITIES_TABLE := TABLES_DIR + "/board_entities.csv"
 
 var pieces: Dictionary = {}
 var effects: Dictionary = {}
 var bosses: Dictionary = {}
 var collectibles: Dictionary = {}
+var echoes: Dictionary = {}
 var default_roster: PackedStringArray = PackedStringArray(["diffraction_phoebe", "annihilation_chisaki", "condensation_coletta", "aero_sigrika", "thermal_emis", "conductive_kakaro"])
 var hidden_piece_ids: PackedStringArray = PackedStringArray(["diffraction_base", "annihilation_base", "condensation_base", "aero_base", "thermal_base", "conductive_base"])
 
@@ -22,9 +25,11 @@ func load_all() -> void:
 	effects = _load_resource_dir(EFFECTS_DIR, "effect")
 	bosses = {}
 	collectibles = {}
+	echoes = {}
 	_load_piece_table()
 	_load_boss_table()
 	_load_collectible_table()
+	_load_board_entity_table()
 	_ensure_default_effects()
 	_ensure_default_pieces()
 	_ensure_default_bosses()
@@ -50,6 +55,9 @@ func get_default_boss() -> Resource:
 
 func get_collectible(id: String) -> Resource:
 	return collectibles.get(id)
+
+func get_echo(id: String) -> EchoDefinition:
+	return echoes.get(id)
 
 func get_collectibles_by_min_rarity(min_rarity: String = "common") -> Array:
 	var result: Array = []
@@ -273,6 +281,26 @@ func _load_collectible_table() -> void:
 			max(1, _parse_int(row.get("pool_weight", "1"), 1)),
 			max(0, _parse_int(row.get("max_stack", "0"), 0))
 		)
+
+func _load_board_entity_table() -> void:
+	for row in _load_csv_table(BOARD_ENTITIES_TABLE):
+		var id: String = String(row.get("id", "")).strip_edges()
+		if id.is_empty():
+			continue
+		var echo: EchoDefinition = EchoDefinitionScript.new()
+		echo.id = id
+		echo.display_name = String(row.get("name", id))
+		echo.texture = _load_texture(String(row.get("texture", "")))
+		echo.clicked_texture = _load_texture(String(row.get("clicked_texture", "")))
+		echo.click_effect_id = String(row.get("click_effect_id", ""))
+		echo.click_effect_params = _parse_json_object(String(row.get("click_effect_params", "{}")))
+		echo.can_swap = _parse_bool(String(row.get("can_swap", "false")), false)
+		echo.affected_by_gravity = _parse_bool(String(row.get("affected_by_gravity", "true")), true)
+		echo.can_match = _parse_bool(String(row.get("can_match", "false")), false)
+		echo.description = String(row.get("description", ""))
+		if echo.texture == null:
+			push_warning("Echo '%s' has no valid texture" % id)
+		echoes[id] = echo
 
 func _load_csv_table(path: String) -> Array:
 	var rows: Array = []

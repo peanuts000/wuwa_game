@@ -43,14 +43,23 @@ func is_immovable(pos: Vector2i) -> bool:
 	if not in_bounds(pos) or get_cell(pos) == null:
 		return true
 	var cell: Dictionary = get_cell(pos)
+	if is_echo_cell(cell):
+		var echo: EchoDefinition = catalog.get_echo(String(cell.get("echo_id", "")))
+		return echo == null or not echo.can_swap
 	return int(cell.get("locked_turns", 0)) > 0 or effect_stacks(cell, "annihilation") >= 6 or effect_stacks(cell, "frost") >= 3
+
+func is_piece_cell(cell: Variant) -> bool:
+	return cell != null and String(cell.get("entity_kind", "piece")) == "piece" and not String(cell.get("piece_id", "")).is_empty()
+
+func is_echo_cell(cell: Variant) -> bool:
+	return cell != null and String(cell.get("entity_kind", "piece")) == "echo" and not String(cell.get("echo_id", "")).is_empty()
 
 func effect_stacks(cell: Dictionary, effect_id: String) -> int:
 	var effects: Dictionary = cell.get("effects", {})
 	return int(effects.get(effect_id, 0))
 
 func set_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
-	if not in_bounds(pos) or get_cell(pos) == null or not EFFECT_LIMITS.has(effect_id):
+	if not in_bounds(pos) or not is_piece_cell(get_cell(pos)) or not EFFECT_LIMITS.has(effect_id):
 		return 0
 	var cell: Dictionary = get_cell(pos)
 	var effects: Dictionary = cell.get("effects", {}).duplicate(true)
@@ -68,7 +77,9 @@ func add_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
 	return set_effect_stacks(pos, effect_id, effect_stacks(cell, effect_id) + amount)
 
 func can_match_cell(pos: Vector2i) -> bool:
-	return in_bounds(pos) and get_cell(pos) != null and effect_stacks(get_cell(pos), "annihilation") < 6
+	if not in_bounds(pos) or not is_piece_cell(get_cell(pos)):
+		return false
+	return effect_stacks(get_cell(pos), "annihilation") < 6
 
 func in_bounds(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < WIDTH and pos.y >= 0 and pos.y < HEIGHT
@@ -85,7 +96,7 @@ func find_matches() -> Array:
 				run = []
 				last_id = ""
 				continue
-			var id: String = String(cells[y][x]["piece_id"])
+			var id: String = String(cells[y][x].get("piece_id", ""))
 			if id == last_id:
 				run.append(Vector2i(x, y))
 			else:
@@ -105,7 +116,7 @@ func find_matches() -> Array:
 				run = []
 				last_id = ""
 				continue
-			var id: String = String(cells[y][x]["piece_id"])
+			var id: String = String(cells[y][x].get("piece_id", ""))
 			if id == last_id:
 				run.append(Vector2i(x, y))
 			else:
@@ -134,6 +145,8 @@ func has_possible_move() -> bool:
 
 func collect_effect_targets(pos: Vector2i, partner_piece_id: String = "") -> Array:
 	var cell: Dictionary = get_cell(pos)
+	if not is_piece_cell(cell):
+		return []
 	var effect: SpecialEffectDefinition = catalog.get_effect(String(cell["special_effect_id"]))
 	var targets: Array = []
 	if effect == null:
@@ -159,7 +172,7 @@ func collect_effect_targets(pos: Vector2i, partner_piece_id: String = "") -> Arr
 				target_id = String(cell["piece_id"])
 			for y in range(HEIGHT):
 				for x in range(WIDTH):
-					if String(cells[y][x]["piece_id"]) == target_id:
+					if is_piece_cell(cells[y][x]) and String(cells[y][x].get("piece_id", "")) == target_id:
 						targets.append(Vector2i(x, y))
 	return targets
 
@@ -184,7 +197,7 @@ func replace_piece_id(old_id: String, new_id: String) -> int:
 	var count: int = 0
 	for y in range(HEIGHT):
 		for x in range(WIDTH):
-			if String(cells[y][x]["piece_id"]) == old_id:
+			if is_piece_cell(cells[y][x]) and String(cells[y][x].get("piece_id", "")) == old_id:
 				cells[y][x]["piece_id"] = new_id
 				count += 1
 	return count
@@ -192,12 +205,14 @@ func replace_piece_id(old_id: String, new_id: String) -> int:
 func lock_random_cells(count: int) -> void:
 	for i in range(count):
 		var pos: Vector2i = Vector2i(rng.randi_range(0, WIDTH - 1), rng.randi_range(0, HEIGHT - 1))
-		cells[pos.y][pos.x]["locked_turns"] = max(1, int(cells[pos.y][pos.x]["locked_turns"]))
+		if is_piece_cell(cells[pos.y][pos.x]):
+			cells[pos.y][pos.x]["locked_turns"] = max(1, int(cells[pos.y][pos.x].get("locked_turns", 0)))
 
 func tick_locks() -> void:
 	for y in range(HEIGHT):
 		for x in range(WIDTH):
-			cells[y][x]["locked_turns"] = max(0, int(cells[y][x]["locked_turns"]) - 1)
+			if is_piece_cell(cells[y][x]):
+				cells[y][x]["locked_turns"] = max(0, int(cells[y][x].get("locked_turns", 0)) - 1)
 
 func _fill_new_board() -> void:
 	var attempts: int = 0
@@ -220,7 +235,22 @@ func _fill_new_board() -> void:
 
 func _new_cell(piece_id: String) -> Dictionary:
 	return {
+		"entity_kind": "piece",
 		"piece_id": piece_id,
+		"echo_id": "",
+		"rune_id": "",
+		"special_effect_id": "",
+		"special_direction": "horizontal",
+		"locked_turns": 0,
+		"effects": {},
+	}
+
+func new_echo_cell(echo_id: String) -> Dictionary:
+	return {
+		"entity_kind": "echo",
+		"piece_id": "",
+		"echo_id": echo_id,
+		"rune_id": "",
 		"special_effect_id": "",
 		"special_direction": "horizontal",
 		"locked_turns": 0,
@@ -234,7 +264,7 @@ func _make_group(positions: Array, direction: Vector2i) -> Dictionary:
 	return {
 		"positions": positions.duplicate(),
 		"direction": direction,
-		"piece_id": String(get_cell(positions[0])["piece_id"]),
+		"piece_id": String(get_cell(positions[0]).get("piece_id", "")),
 	}
 
 func _merge_intersections(groups: Array) -> Array:
