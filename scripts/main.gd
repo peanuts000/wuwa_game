@@ -189,6 +189,39 @@ const EMIS_RESONANCE_STAR_BACKGROUNDS: Array[String] = [
 const EMIS_RESONANCE_WAVE := "res://assets/ui/emis_resonance_wave.png"
 const EMIS_RESONANCE_READY := "res://assets/ui/emis_resonance_ready.png"
 const EMIS_WAVE_RECT := Rect2(70.0, 0.0, 500.0, 106.0)
+const DANIYA_PIECE_ID := "thermal_daniya"
+const DANIYA_RESONANCE_TEXTURE_SIZE := Vector2(640.0, 106.0)
+const DANIYA_RESONANCE_EMPTY := "res://assets/ui/daniya_resonance_empty.png"
+const DANIYA_RESONANCE_WAVE := "res://assets/ui/daniya_resonance_wave.png"
+const DANIYA_RESONANCE_READY := "res://assets/ui/daniya_resonance_ready.png"
+const DANIYA_RESONANCE_READY_BASE := "res://assets/ui/daniya_resonance_ready_base.png"
+const DANIYA_RESONANCE_ACTIVE := "res://assets/ui/daniya_resonance_active.png"
+const DANIYA_RESONANCE_ACTIVE_BASE := "res://assets/ui/daniya_resonance_active_base.png"
+const DANIYA_RESONANCE_ACTIVE_WAVE := "res://assets/ui/daniya_resonance_active_wave.png"
+const DANIYA_RESONANCE_EXHAUSTED := "res://assets/ui/daniya_resonance_exhausted.png"
+const DANIYA_WAVE_ANIMATION_SHADER := """
+shader_type canvas_item;
+
+uniform float baseline_ratio = 0.60;
+
+void fragment() {
+	float bar_index = floor(UV.x * 64.0);
+	float bar_x = (bar_index + 0.5) / 64.0;
+	float broad_wave = sin(bar_x * 18.8495559 - TIME * 4.0);
+	float fine_wave = sin(bar_x * 43.9822972 + TIME * 5.4);
+	float pulse = sin(TIME * 2.2 + bar_x * 6.2831853);
+	float motion = clamp(0.52 + broad_wave * 0.28 + fine_wave * 0.12 + pulse * 0.06, 0.0, 1.0);
+	float height_scale = mix(0.42, 1.10, smoothstep(0.0, 1.0, motion));
+	float sample_y = baseline_ratio - (baseline_ratio - UV.y) / height_scale;
+	if (UV.y > baseline_ratio || sample_y < 0.0 || sample_y > baseline_ratio) {
+		COLOR = vec4(0.0);
+	} else {
+		vec4 color = texture(TEXTURE, vec2(UV.x, sample_y));
+		color.rgb *= mix(0.94, 1.10, motion);
+		COLOR = color;
+	}
+}
+"""
 const SIGRIKA_RUNE_TEXTURES := {
 	"aero_rune_blue": "res://assets/ui/runes/sigrika_rune_blue.png",
 	"aero_rune_gold": "res://assets/ui/runes/sigrika_rune_gold.png",
@@ -266,6 +299,9 @@ var kakaro_releases_remaining: int = 0
 var chisaki_release_active: bool = false
 var chisaki_releases_remaining: int = 0
 var chisaki_activation_action_pending: bool = false
+var daniya_release_active: bool = false
+var daniya_actions_remaining: int = 0
+var daniya_activation_action_pending: bool = false
 var player_action_in_progress: bool = false
 var sigrika_resonance_enhanced: bool = false
 var sigrika_special_energy: int = 0
@@ -493,6 +529,7 @@ func _make_menu_button(text: String, callback: Callable) -> Button:
 	return button
 
 func _show_main_menu() -> void:
+	_clear_daniya_release_state()
 	_clear_screen()
 	current_screen = "menu"
 	var viewport_size: Vector2 = get_viewport_rect().size
@@ -1251,6 +1288,7 @@ func _start_game() -> void:
 	chisaki_release_active = false
 	chisaki_releases_remaining = 0
 	chisaki_activation_action_pending = false
+	_clear_daniya_release_state()
 	player_action_in_progress = false
 	sigrika_resonance_enhanced = false
 	sigrika_special_energy = 0
@@ -1286,6 +1324,7 @@ func _start_battle_node(node: Dictionary) -> void:
 	chisaki_release_active = false
 	chisaki_releases_remaining = 0
 	chisaki_activation_action_pending = false
+	_clear_daniya_release_state()
 	player_action_in_progress = false
 	sigrika_resonance_enhanced = false
 	sigrika_special_energy = 0
@@ -1563,7 +1602,7 @@ func _set_boss_effect_stacks(effect_id: String, amount: int) -> int:
 		boss_effects[effect_id] = value
 	if effect_id == "frost" and value >= limit:
 		boss_frozen = true
-	if effect_id == "explosive" and value >= limit:
+	if effect_id == "explosive" and value >= limit and not daniya_release_active:
 		_apply_direct_boss_damage(EFFECT_EXPLOSIVE_BOSS_DAMAGE, "聚爆")
 		boss_effects.erase(effect_id)
 		value = 0
@@ -1665,6 +1704,7 @@ func _calculate_boss_damage(cleared_positions: Array, damage_multiplier: float =
 
 func _finish_battle() -> void:
 	_clear_chisaki_release_state()
+	_clear_daniya_release_state()
 	if run_active:
 		_on_run_battle_won()
 		return
@@ -1722,8 +1762,9 @@ func _make_battle_roster_slot(index: int) -> Button:
 	var is_chisaki: bool = piece != null and piece.id == CHISAKI_PIECE_ID
 	var is_sigrika: bool = piece != null and piece.id == SIGRIKA_PIECE_ID
 	var is_emis: bool = piece != null and piece.id == EMIS_PIECE_ID
+	var is_daniya: bool = piece != null and piece.id == DANIYA_PIECE_ID
 	if texture != null:
-		var icon_scale: float = 0.64 if is_coletta or is_phoebe or is_kakaro or is_chisaki or is_sigrika or is_emis else 0.78
+		var icon_scale: float = 0.64 if is_coletta or is_phoebe or is_kakaro or is_chisaki or is_sigrika or is_emis or is_daniya else 0.78
 		box.add_child(_make_piece_texture_rect(texture, Vector2(slot_size * icon_scale, slot_size * icon_scale)))
 	if is_coletta:
 		box.add_child(_make_coletta_resonance_bar(index, slot_size))
@@ -1737,6 +1778,8 @@ func _make_battle_roster_slot(index: int) -> Button:
 		box.add_child(_make_sigrika_resonance_bar(index, slot_size))
 	elif is_emis:
 		box.add_child(_make_emis_resonance_bar(index, slot_size))
+	elif is_daniya:
+		box.add_child(_make_daniya_resonance_bar(index, slot_size))
 	else:
 		var progress: ProgressBar = ProgressBar.new()
 		progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1774,6 +1817,8 @@ func _make_battle_roster_slot(index: int) -> Button:
 			value_label.text = "共鸣解放"
 		else:
 			value_label.text = "星 %d/4 · 进度 %d/10" % [floori(float(emis_value) / float(EMIS_STAR_COST)), emis_value % EMIS_STAR_COST]
+	elif is_daniya and daniya_release_active:
+		value_label.text = "聚爆引爆：剩余 %d 次行动" % daniya_actions_remaining
 	elif _is_resonance_ready(index):
 		value_label.text = "共鸣解放"
 	box.add_child(value_label)
@@ -2277,6 +2322,70 @@ func _add_emis_progress_wave(parent: Control, progress_ratio: float) -> void:
 		wave.size = parent.size
 	)
 	parent.call_deferred("emit_signal", "resized")
+
+func _make_daniya_resonance_bar(index: int, slot_size: float) -> Control:
+	var wrapper: Control = Control.new()
+	var width: float = max(58.0, slot_size * 0.92)
+	var height: float = max(10.0, width * DANIYA_RESONANCE_TEXTURE_SIZE.y / DANIYA_RESONANCE_TEXTURE_SIZE.x)
+	wrapper.custom_minimum_size = Vector2(width, height)
+	wrapper.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	wrapper.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrapper.clip_contents = true
+	if daniya_release_active:
+		if daniya_actions_remaining >= 5:
+			_add_chisaki_full_texture(wrapper, DANIYA_RESONANCE_ACTIVE_BASE)
+			_add_daniya_clipped_layer(wrapper, DANIYA_RESONANCE_ACTIVE_WAVE, 1.0)
+		else:
+			_add_chisaki_full_texture(wrapper, DANIYA_RESONANCE_EXHAUSTED)
+			var remaining_ratio: float = clamp(float(daniya_actions_remaining) / 5.0, 0.0, 1.0)
+			_add_daniya_clipped_layer(wrapper, DANIYA_RESONANCE_ACTIVE_BASE, remaining_ratio)
+			_add_daniya_clipped_layer(wrapper, DANIYA_RESONANCE_ACTIVE_WAVE, remaining_ratio)
+		return wrapper
+	if _resonance_value(index) >= _resonance_cost(index):
+		_add_chisaki_full_texture(wrapper, DANIYA_RESONANCE_READY_BASE)
+		_add_daniya_clipped_layer(wrapper, DANIYA_RESONANCE_WAVE, 1.0)
+		return wrapper
+	_add_chisaki_full_texture(wrapper, DANIYA_RESONANCE_EMPTY)
+	var ratio: float = clamp(float(_resonance_value(index)) / float(_resonance_cost(index)), 0.0, 1.0)
+	if ratio > 0.0:
+		_add_daniya_clipped_layer(wrapper, DANIYA_RESONANCE_WAVE, ratio)
+	return wrapper
+
+func _add_daniya_clipped_layer(parent: Control, texture_path: String, ratio: float) -> void:
+	if ratio <= 0.0:
+		return
+	var texture: Texture2D = load(texture_path) as Texture2D
+	if texture == null:
+		return
+	var clip: Control = Control.new()
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.clip_contents = true
+	parent.add_child(clip)
+	var rect: TextureRect = TextureRect.new()
+	rect.texture = texture
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	if texture_path in [DANIYA_RESONANCE_WAVE, DANIYA_RESONANCE_ACTIVE_WAVE]:
+		rect.material = _make_daniya_wave_material()
+	clip.add_child(rect)
+	parent.resized.connect(func() -> void:
+		clip.position = Vector2.ZERO
+		clip.size = Vector2(parent.size.x * ratio, parent.size.y)
+		rect.position = Vector2.ZERO
+		rect.size = parent.size
+	)
+	parent.call_deferred("emit_signal", "resized")
+
+func _make_daniya_wave_material() -> ShaderMaterial:
+	var shader: Shader = Shader.new()
+	shader.code = DANIYA_WAVE_ANIMATION_SHADER
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("baseline_ratio", 0.60)
+	return material
 
 func _set_sigrika_resonance_enhanced(enabled: bool) -> void:
 	if sigrika_resonance_enhanced == enabled:
@@ -3589,6 +3698,7 @@ func _after_player_move() -> void:
 	_redraw_game()
 
 func _settle_player_action() -> bool:
+	_settle_daniya_action_effect()
 	var photo_stacks: int = _boss_effect_stacks("photo")
 	if photo_stacks > 0:
 		_apply_direct_boss_damage(photo_stacks * EFFECT_PHOTO_DAMAGE_PER_STACK, "光燥")
@@ -3712,6 +3822,8 @@ func _is_resonance_ready(slot_index: int) -> bool:
 		return kakaro_release_active and kakaro_releases_remaining > 0
 	if slot_index >= 0 and slot_index < current_roster.size() and current_roster[slot_index] == CHISAKI_PIECE_ID:
 		return not chisaki_release_active and _resonance_value(slot_index) >= _resonance_cost(slot_index)
+	if slot_index >= 0 and slot_index < current_roster.size() and current_roster[slot_index] == DANIYA_PIECE_ID:
+		return not daniya_release_active and _resonance_value(slot_index) >= _resonance_cost(slot_index)
 	if slot_index >= 0 and slot_index < current_roster.size() and current_roster[slot_index] == SIGRIKA_PIECE_ID:
 		return sigrika_special_energy >= SIGRIKA_SPECIAL_ENERGY_MAX
 	return slot_index >= 0 and slot_index < SLOT_ATTRIBUTES.size() and _resonance_value(slot_index) >= _resonance_cost(slot_index)
@@ -3734,6 +3846,8 @@ func _add_resonance(slot_index: int, amount: int, _reason: String = "") -> void:
 	if slot_index < current_roster.size() and current_roster[slot_index] == KAKARO_PIECE_ID and kakaro_release_active:
 		return
 	if slot_index < current_roster.size() and current_roster[slot_index] == CHISAKI_PIECE_ID and chisaki_release_active:
+		return
+	if slot_index < current_roster.size() and current_roster[slot_index] == DANIYA_PIECE_ID and daniya_release_active:
 		return
 	if run_active:
 		amount = max(1, roundi(float(amount) * (1.0 + _collectible_total("resonance_mult"))))
@@ -3902,13 +4016,14 @@ func _apply_clear_passives(targets: Array) -> void:
 		if source_cell == null:
 			continue
 		var piece: PieceDefinition = catalog.get_piece(String(source_cell["piece_id"]))
-		if piece == null or piece.passive_skill_id != "photo_adjacent_on_clear":
+		if piece == null or piece.passive_skill_id not in ["photo_adjacent_on_clear", "explosive_adjacent_on_clear"]:
 			continue
-		var effect_id: String = _param_text(piece.passive_skill_params, "effect_id", "photo")
+		var default_effect_id: String = "explosive" if piece.passive_skill_id == "explosive_adjacent_on_clear" else "photo"
+		var effect_id: String = _param_text(piece.passive_skill_params, "effect_id", default_effect_id)
 		var amount: int = max(1, _param_int(piece.passive_skill_params, "amount", 1))
 		for delta in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
 			var target_pos: Vector2i = source_pos + delta
-			if not board.in_bounds(target_pos) or cleared_lookup.has(target_pos) or board.get_cell(target_pos) == null:
+			if not board.in_bounds(target_pos) or cleared_lookup.has(target_pos) or not board.is_piece_cell(board.get_cell(target_pos)):
 				continue
 			var pending_key: String = "%s|%s" % [target_pos, effect_id]
 			pending_effects[pending_key] = {
@@ -3918,10 +4033,10 @@ func _apply_clear_passives(targets: Array) -> void:
 			}
 			if piece.resonance_gain_id == "apply_effect_attempt" and _param_text(piece.resonance_gain_params, "effect_id", effect_id) == effect_id:
 				var slot_index: int = _slot_index_for_piece_id(piece.id)
-				if slot_index >= 0:
+				if slot_index >= 0 and not (piece.id == DANIYA_PIECE_ID and daniya_release_active):
 					resonance_attempts[slot_index] = int(resonance_attempts.get(slot_index, 0)) + amount * _param_int(piece.resonance_gain_params, "amount", 1)
 	for slot_index in resonance_attempts.keys():
-		_add_resonance(int(slot_index), int(resonance_attempts[slot_index]), "施加光燥")
+		_add_resonance(int(slot_index), int(resonance_attempts[slot_index]), "施加团子效应")
 	var affected_positions: Array = []
 	for pending in pending_effects.values():
 		var target_pos: Vector2i = pending["pos"]
@@ -4013,11 +4128,34 @@ func _clear_chisaki_release_state() -> void:
 	chisaki_activation_action_pending = false
 	player_action_in_progress = false
 
+func _clear_daniya_release_state() -> void:
+	daniya_release_active = false
+	daniya_actions_remaining = 0
+	daniya_activation_action_pending = false
+
+func _settle_daniya_action_effect() -> void:
+	if not daniya_release_active:
+		return
+	if daniya_activation_action_pending:
+		daniya_activation_action_pending = false
+		return
+	var daniya: PieceDefinition = catalog.get_piece(DANIYA_PIECE_ID) if catalog != null else null
+	var damage_per_stack: int = max(0, _param_int(daniya.resonance_effect_params, "damage_per_stack", 3)) if daniya != null else 3
+	var stacks: int = _boss_effect_stacks("explosive")
+	if stacks > 0 and damage_per_stack > 0:
+		_apply_direct_boss_damage(stacks * damage_per_stack, "达妮娅聚爆")
+	daniya_actions_remaining = max(0, daniya_actions_remaining - 1)
+	if daniya_actions_remaining <= 0:
+		daniya_release_active = false
+		_set_boss_status("达妮娅共鸣解放状态结束", "达妮娅")
+
 func _apply_resonance_effect(piece: PieceDefinition, release_target_cell: Vector2i, target_orientation: String = "horizontal") -> bool:
 	var params: Dictionary = piece.resonance_effect_params
 	match piece.resonance_effect_id:
 		"redirect_piece_effects":
 			return _release_redirect_piece_effects(params)
+		"trigger_boss_explosive_actions":
+			return _release_daniya_explosive_actions(params)
 		"spread_photo":
 			return _release_spread_photo(params)
 		"create_special_pieces":
@@ -4059,6 +4197,16 @@ func _release_redirect_piece_effects(params: Dictionary) -> bool:
 	chisaki_releases_remaining = max(1, _param_int(params, "action_count", 5))
 	chisaki_activation_action_pending = true
 	_set_boss_status(_param_text(params, "status", "千咲共鸣解放：团子效应转移至大魔王"), _param_text(params, "avatar", "湮灭"))
+	_redraw_game()
+	return true
+
+func _release_daniya_explosive_actions(params: Dictionary) -> bool:
+	if daniya_release_active:
+		return false
+	daniya_release_active = true
+	daniya_actions_remaining = max(1, _param_int(params, "action_count", 5))
+	daniya_activation_action_pending = true
+	_set_boss_status(_param_text(params, "status", "达妮娅共鸣解放：五次行动内持续引爆聚爆"), _param_text(params, "avatar", "达妮娅"))
 	_redraw_game()
 	return true
 
@@ -4823,6 +4971,8 @@ func _cheat_set_resonance(slot_index: int, value: int) -> void:
 		_activate_kakaro_release_if_full()
 	if slot_index < current_roster.size() and current_roster[slot_index] == CHISAKI_PIECE_ID:
 		_clear_chisaki_release_state()
+	if slot_index < current_roster.size() and current_roster[slot_index] == DANIYA_PIECE_ID:
+		_clear_daniya_release_state()
 	if slot_index < current_roster.size() and current_roster[slot_index] == SIGRIKA_PIECE_ID:
 		if value <= 0:
 			sigrika_special_energy = 0
@@ -4910,6 +5060,7 @@ func _on_run_battle_won() -> void:
 
 func _on_run_battle_lost() -> void:
 	_clear_chisaki_release_state()
+	_clear_daniya_release_state()
 	run_state["lives"] = max(0, int(run_state.get("lives", RUN_MAX_LIVES)) - 1)
 	if int(run_state.get("lives", 0)) <= 0:
 		_finish_run_failed()
@@ -5692,6 +5843,7 @@ func _show_run_pause() -> void:
 
 func _end_game() -> void:
 	_clear_chisaki_release_state()
+	_clear_daniya_release_state()
 	if run_active:
 		_on_run_battle_lost()
 		return

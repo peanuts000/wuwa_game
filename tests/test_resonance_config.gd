@@ -11,7 +11,7 @@ func _initialize() -> void:
 	for piece: PieceDefinition in catalog.pieces.values():
 		assert(piece.attack == 6, "%s attack should default to 6" % piece.id)
 		assert(not piece.resonance_gain_id.is_empty(), "%s 缺少共鸣获取规则" % piece.id)
-		if piece.id != "diffraction_phoebe" and piece.id != "annihilation_chisaki" and piece.id != "aero_sigrika":
+		if piece.id not in ["diffraction_phoebe", "annihilation_chisaki", "aero_sigrika", "thermal_daniya"]:
 			assert(piece.passive_skill_id.is_empty(), "%s 的被动技能当前应为空" % piece.id)
 			assert(piece.passive_skill_params.is_empty(), "%s 的被动技能参数当前应为空" % piece.id)
 	var phoebe: PieceDefinition = catalog.get_piece("diffraction_phoebe")
@@ -53,6 +53,12 @@ func _initialize() -> void:
 	assert(emis != null and emis.resonance_cost == 40, "爱弥斯共鸣上限应为40")
 	assert(emis.resonance_gain_id == "clear_self_star", "爱弥斯应按自身消除累计星能")
 	assert(emis.resonance_effect_id == "clear_center_piece_area" and int(emis.resonance_effect_params.get("size", 0)) == 6, "爱弥斯应固定清除中央6×6范围")
+	var daniya: PieceDefinition = catalog.get_piece("thermal_daniya")
+	assert(daniya != null and daniya.resonance_cost == 30, "达妮娅共鸣上限应为30")
+	assert(daniya.passive_skill_id == "explosive_adjacent_on_clear", "达妮娅应向相邻团子附着聚爆")
+	assert(daniya.resonance_gain_id == "apply_effect_attempt" and String(daniya.resonance_gain_params.get("effect_id", "")) == "explosive", "达妮娅应按聚爆施加尝试充能")
+	assert(daniya.resonance_effect_id == "trigger_boss_explosive_actions", "达妮娅应启用五行动聚爆引爆")
+	assert(int(daniya.resonance_effect_params.get("action_count", 0)) == 5 and int(daniya.resonance_effect_params.get("damage_per_stack", 0)) == 3, "达妮娅解放参数错误")
 	var boss: Resource = catalog.get_default_boss()
 	assert(boss != null and boss.defense == 20, "default boss defense should be 20")
 	_test_runtime_gain_rules(catalog)
@@ -94,7 +100,77 @@ func _test_runtime_gain_rules(catalog: PieceCatalog) -> void:
 	_test_chisaki_runtime(game)
 	_test_sigrika_runtime(game)
 	_test_emis_runtime(game)
+	_test_daniya_runtime(game)
 	game.free()
+
+func _test_daniya_runtime(game: Control) -> void:
+	var slot_index: int = 4
+	var original_piece_id: String = game.current_roster[slot_index]
+	game.current_roster[slot_index] = "thermal_daniya"
+	for y in range(BoardModel.HEIGHT):
+		for x in range(BoardModel.WIDTH):
+			game.board.cells[y][x] = game.board._new_cell("diffraction_base")
+	var first := Vector2i(1, 1)
+	var second := Vector2i(3, 1)
+	var shared_target := Vector2i(2, 1)
+	game.board.cells[first.y][first.x]["piece_id"] = "thermal_daniya"
+	game.board.cells[second.y][second.x]["piece_id"] = "thermal_daniya"
+	game.resonance_values[slot_index] = 0
+	game._apply_clear_passives([first, second])
+	assert(game.board.effect_stacks(game.board.get_cell(shared_target), "explosive") == 2, "两个达妮娅应分别向共同邻格附着聚爆")
+	assert(game.resonance_values[slot_index] == 8, "两个内圈达妮娅应按八次附着尝试充能")
+	game.board.set_effect_stacks(shared_target, "explosive", 10)
+	game.resonance_values[slot_index] = 0
+	game._apply_clear_passives([first, second])
+	assert(game.resonance_values[slot_index] == 8, "目标满层时达妮娅仍应按附着尝试充能")
+	game.board.set_effect_stacks(shared_target, "explosive", 0)
+	game.resonance_values[slot_index] = 0
+	game._apply_clear_passives([first, shared_target])
+	assert(game.board.effect_stacks(game.board.get_cell(shared_target), "explosive") == 0, "本次参与清除的邻格不能被附着聚爆")
+	game.resonance_values[slot_index] = 29
+	assert(not game._is_resonance_ready(slot_index), "达妮娅29点时不能释放")
+	game._add_resonance(slot_index, 10, "封顶测试")
+	assert(game.resonance_values[slot_index] == 30 and game._is_resonance_ready(slot_index), "达妮娅能量应封顶30并进入可释放状态")
+	var daniya: PieceDefinition = game.catalog.get_piece("thermal_daniya")
+	assert(game._release_daniya_explosive_actions(daniya.resonance_effect_params), "达妮娅满能后应能启动五行动状态")
+	game.resonance_values[slot_index] = 0
+	game._add_resonance(slot_index, 5, "状态期间暂停充能")
+	assert(game.resonance_values[slot_index] == 0, "达妮娅解放期间不能重新充能")
+	game.boss_hp_infinite = false
+	game.boss_hp = 500
+	assert(game._boss_effect_limit("explosive") == 13, "达妮娅与千咲同时上阵时应使用13层聚爆上限")
+	game._set_boss_effect_stacks("explosive", 13)
+	assert(game.boss_hp == 500 and game._boss_effect_stacks("explosive") == 13, "达妮娅状态期间满层聚爆不能自动爆炸或清零")
+	game._settle_daniya_action_effect()
+	assert(game.daniya_actions_remaining == 5 and game.boss_hp == 500, "启动点击不能计入达妮娅五次行动")
+	for expected_remaining in [4, 3, 2, 1, 0]:
+		game._settle_daniya_action_effect()
+		assert(game.daniya_actions_remaining == expected_remaining, "达妮娅状态行动次数扣除错误")
+		assert(game._boss_effect_stacks("explosive") == 13, "达妮娅每次引爆后必须保留聚爆层数")
+	assert(game.boss_hp == 305 and not game.daniya_release_active, "达妮娅五次行动应各按13层×3造成伤害并结束状态")
+	game._set_boss_effect_stacks("explosive", 13)
+	assert(game.boss_hp == 275 and game._boss_effect_stacks("explosive") == 0, "状态结束后应恢复满层聚爆30点伤害与清零")
+	for value in [0, 1, 15, 29, 30]:
+		game.resonance_values[slot_index] = value
+		var bar: Control = game._make_daniya_resonance_bar(slot_index, 156.0)
+		assert(bar.get_child_count() == (1 if value == 0 else 2), "达妮娅%d点时共鸣条图层数量错误" % value)
+		if value > 0:
+			var wave_clip: Control = bar.get_child(1) as Control
+			var wave_rect: TextureRect = wave_clip.get_child(0) as TextureRect
+			assert(wave_rect != null and wave_rect.material is ShaderMaterial, "达妮娅充能与满能波形都应使用动态频率材质")
+		bar.free()
+	game.daniya_release_active = true
+	for remaining in [5, 4, 3, 2, 1]:
+		game.daniya_actions_remaining = remaining
+		var release_bar: Control = game._make_daniya_resonance_bar(slot_index, 156.0)
+		assert(release_bar.get_child_count() == (2 if remaining == 5 else 3), "达妮娅剩余%d次时解放图层数量错误" % remaining)
+		var release_wave_clip: Control = release_bar.get_child(release_bar.get_child_count() - 1) as Control
+		var release_wave: TextureRect = release_wave_clip.get_child(0) as TextureRect
+		assert(release_wave != null and release_wave.material is ShaderMaterial, "达妮娅解放状态波形应持续使用动态频率材质")
+		release_bar.free()
+	game._clear_daniya_release_state()
+	game.boss_hp_infinite = true
+	game.current_roster[slot_index] = original_piece_id
 
 func _test_emis_runtime(game: Control) -> void:
 	var slot_index: int = 4
