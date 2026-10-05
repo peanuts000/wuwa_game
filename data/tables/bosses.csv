@@ -1,2 +1,4 @@
-﻿id,name,hp,texture,skill_effect_id,skill_effect_params,skill_interval,skill_chance,description,defense
-tuanzi_demon_king,团子大魔王,300,,boss_random_interference,"{""lock_large"":3,""lock_small"":1,""lock_resonance"":10,""break_resonance"":6,""small_resonance"":5}",3,0.30,默认大魔王。会随机锁格或打断 Combo。,20
+"id","name","hp","texture","skill_effect_id","skill_effect_params","skill_interval","skill_chance","description","defense","encounter_type","hp_growth_per_floor","enrage_hp_ratio","enrage_skill_interval","enrage_skill_chance","enrage_skill_effect_id","enrage_skill_effect_params"
+"tuanzi_scout","普通·紫团斥候","120","res://assets/enemies/purple_dumpling.png","lock_cells","{""count"":1}","4","1.0","每4次行动锁定1格（消除上下左右相邻团子才解锁）。血量每层增加首层的20%。","0","battle","0.2","0","2","1.0","none","{}"
+"tuanzi_elite","精英·紫团卫士","240","res://assets/enemies/purple_dumpling.png","lock_cells","{""count"":2}","3","1.0","每3次行动锁定2格（消除上下左右相邻团子才解锁）。血量每层增加首层的20%。","10","elite","0.2","0","2","1.0","none","{}"
+"tuanzi_demon_king","Boss·紫团魔王","420","res://assets/enemies/purple_dumpling.png","lock_and_break_combo","{""count"":2}","3","1.0","每3次行动锁定2格并打断Combo；血量降至三分之一后每2次行动锁定3格并打断Combo。血量每层增加首层的20%。","20","boss","0.2","0.3333333333","2","1.0","lock_and_break_combo","{""count"":3}"

@@ -6,10 +6,10 @@ uid="uid://1lkdlk1dpmm"
 
 [deps]
 
-files=["res://data/tables/bosses.name.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.description.translation", "res://data/tables/bosses.defense.translation"]
+files=["res://data/tables/bosses.name.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.texture.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.description.translation", "res://data/tables/bosses.defense.translation", "res://data/tables/bosses.encounter.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation"]
 
 source_file="res://data/tables/bosses.csv"
-dest_files=["res://data/tables/bosses.name.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.description.translation", "res://data/tables/bosses.defense.translation"]
+dest_files=["res://data/tables/bosses.name.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.texture.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.skill.translation", "res://data/tables/bosses.description.translation", "res://data/tables/bosses.defense.translation", "res://data/tables/bosses.encounter.translation", "res://data/tables/bosses.hp.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation", "res://data/tables/bosses.enrage.translation"]
 
 [params]
 

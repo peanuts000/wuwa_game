@@ -3,6 +3,9 @@ extends Control
 const BoardModelScript := preload("res://scripts/game/board_model.gd")
 const SaveManagerScript := preload("res://scripts/game/save_manager.gd")
 const RunMapCanvasScript := preload("res://scripts/ui/run_map_canvas.gd")
+const LockChainOverlayScript := preload("res://scripts/ui/lock_chain_overlay.gd")
+const FrostOverlayScript := preload("res://scripts/ui/frost_overlay.gd")
+const LockChainBreakScript := preload("res://scripts/ui/lock_chain_break.gd")
 const COLETTA_CRYSTAL_LEFT := "res://assets/ui/coletta_components/T_NorCrystal1.png"
 const COLETTA_CRYSTAL_RIGHT := "res://assets/ui/coletta_components/T_NorCrystal2.png"
 const COLETTA_CRYSTAL_CORE_LEFT := "res://assets/ui/coletta_components/T_NorCrystalMid1.png"
@@ -36,6 +39,14 @@ const COLETTA_READY_LIGHT_BLUE_BOTTOM := "res://assets/ui/coletta_components/T_U
 const COLETTA_READY_LIGHT_PURPLE := "res://assets/ui/coletta_components/T_UltimateLightPurple.png"
 const COLETTA_READY_LIGHT_RED := "res://assets/ui/coletta_components/T_UltimateLightRed.png"
 const SLOT_ATTRIBUTES: Array[String] = ["衍射", "湮灭", "冷凝", "气动", "热熔", "导电"]
+const ELEMENT_ICON_PATHS := {
+	"衍射": "res://assets/ui/elements/T_IconElementLight.png",
+	"湮灭": "res://assets/ui/elements/T_IconElementDark.png",
+	"冷凝": "res://assets/ui/elements/T_IconElementIce.png",
+	"气动": "res://assets/ui/elements/T_IconElementWind.png",
+	"热熔": "res://assets/ui/elements/T_IconElementFire.png",
+	"导电": "res://assets/ui/elements/T_IconElementThunder.png",
+}
 const COLETTA_PIECE_ID := "condensation_coletta"
 const COLETTA_RESONANCE_TEXTURE_SIZE := Vector2(640.0, 106.0)
 const COLETTA_WAVE_HEIGHT_SCALE := 0.55
@@ -274,6 +285,14 @@ const EFFECT_NAMES := {
 	"frost": "霜渐",
 	"aero": "风蚀",
 }
+const EFFECT_ATTRIBUTES := {
+	"photo": "衍射",
+	"annihilation": "湮灭",
+	"frost": "冷凝",
+	"aero": "气动",
+	"explosive": "热熔",
+	"conductive": "导电",
+}
 const RUN_TOTAL_FLOORS := 5
 const RUN_MAP_ROWS := 5
 const RUN_MAP_MIN_LANES := 2
@@ -373,7 +392,6 @@ var cheat_pick_cell_pending: bool = false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	size = get_viewport_rect().size
 	_apply_global_theme()
 	rng.randomize()
 	catalog.load_all()
@@ -442,14 +460,12 @@ func _build_root() -> void:
 	page = PanelContainer.new()
 	add_child(page)
 	page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	page.size = get_viewport_rect().size
 	page.custom_minimum_size = get_viewport_rect().size
 	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content_margin = MarginContainer.new()
 	page.add_child(content_margin)
 	content_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	content_margin.size = get_viewport_rect().size
 	content_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content_margin.add_theme_constant_override("margin_left", 28)
@@ -772,9 +788,14 @@ func _configure_roster_slot_button(button: Button, index: int) -> void:
 	if index >= 0 and index < SLOT_ATTRIBUTES.size():
 		prefix = SLOT_ATTRIBUTES[index]
 	var label_size: int = max(17, int(button.custom_minimum_size.x * 0.12))
-	var title_label: Label = _make_piece_ui_label(prefix, label_size)
-	title_label.custom_minimum_size = Vector2(0, max(22.0, button.custom_minimum_size.x * 0.15))
-	box.add_child(title_label)
+	if ELEMENT_ICON_PATHS.has(prefix):
+		var element_size: float = clampf(button.custom_minimum_size.x * 0.20, 28.0, 42.0)
+		var element_icon: TextureRect = _make_piece_texture_rect(load(ELEMENT_ICON_PATHS[prefix]) as Texture2D, Vector2(element_size, element_size))
+		element_icon.name = "ElementIcon"
+		box.add_child(element_icon)
+		button.tooltip_text = prefix
+	else:
+		box.add_child(_make_piece_ui_label(prefix, label_size))
 	var texture: Texture2D = _piece_preview_texture(piece, active)
 	if texture != null:
 		var icon_size: float = clamp(button.custom_minimum_size.x * 0.60, 52.0, 118.0)
@@ -1073,23 +1094,25 @@ func _assign_reachable_tree_links(rows: Array) -> void:
 	for row_index in range(rows.size() - 1):
 		var current_row: Array = rows[row_index]
 		var next_row: Array = rows[row_index + 1]
-		_assign_primary_tree_links(current_row, next_row)
-		_trim_tree_row_links(current_row, next_row)
+		var max_outgoing: int = max(2, ceili(float(next_row.size()) / float(max(1, current_row.size()))))
+		var max_incoming: int = max(2, ceili(float(current_row.size()) / float(max(1, next_row.size()))))
+		_assign_primary_tree_links(current_row, next_row, max_outgoing, max_incoming)
+		_trim_tree_row_links(current_row, next_row, max_outgoing, max_incoming)
 
-func _assign_primary_tree_links(current_row: Array, next_row: Array) -> void:
+func _assign_primary_tree_links(current_row: Array, next_row: Array, max_outgoing: int, max_incoming: int) -> void:
 	var incoming_by_id: Dictionary = {}
 	for next_node in next_row:
 		incoming_by_id[String(next_node.get("id", ""))] = 0
 	for source_index in range(current_row.size()):
 		var target_index: int = _tree_target_index_for_source(source_index, current_row.size(), next_row.size())
 		var target_id: String = String(next_row[target_index].get("id", ""))
-		_add_tree_link(current_row[source_index], target_id, incoming_by_id)
+		_add_tree_link(current_row[source_index], target_id, incoming_by_id, max_outgoing, max_incoming)
 	for next_index in range(next_row.size()):
 		var target_id: String = String(next_row[next_index].get("id", ""))
 		if int(incoming_by_id.get(target_id, 0)) > 0:
 			continue
 		var source_index: int = _tree_source_index_for_target(next_index, next_row.size(), current_row.size())
-		_add_tree_link(current_row[source_index], target_id, incoming_by_id)
+		_add_tree_link(current_row[source_index], target_id, incoming_by_id, max_outgoing, max_incoming)
 
 func _tree_source_index_for_target(target_index: int, target_count: int, source_count: int) -> int:
 	if target_count <= 1 or source_count <= 1:
@@ -1101,18 +1124,18 @@ func _tree_target_index_for_source(source_index: int, source_count: int, target_
 		return 0
 	return clamp(roundi(float(source_index) * float(target_count - 1) / float(source_count - 1)), 0, target_count - 1)
 
-func _add_tree_link(source_node: Dictionary, target_id: String, incoming_by_id: Dictionary) -> void:
-	if target_id.is_empty() or int(incoming_by_id.get(target_id, 0)) >= 2:
+func _add_tree_link(source_node: Dictionary, target_id: String, incoming_by_id: Dictionary, max_outgoing: int, max_incoming: int) -> void:
+	if target_id.is_empty() or int(incoming_by_id.get(target_id, 0)) >= max_incoming:
 		return
 	var links: Array = _node_links(source_node)
-	if links.has(target_id) or links.size() >= 2:
+	if links.has(target_id) or links.size() >= max_outgoing:
 		return
 	links.append(target_id)
 	links.sort_custom(func(a: String, b: String) -> bool: return a < b)
 	source_node["links"] = links
 	incoming_by_id[target_id] = int(incoming_by_id.get(target_id, 0)) + 1
 
-func _trim_tree_row_links(current_row: Array, next_row: Array) -> void:
+func _trim_tree_row_links(current_row: Array, next_row: Array, max_outgoing: int, max_incoming: int) -> void:
 	var allowed_ids: Array = _ids_for_row(next_row)
 	var incoming_by_id: Dictionary = {}
 	for target_id in allowed_ids:
@@ -1122,9 +1145,9 @@ func _trim_tree_row_links(current_row: Array, next_row: Array) -> void:
 		var trimmed_links: Array = []
 		for target_id in _node_links(node_data):
 			var normalized_id: String = String(target_id)
-			if not allowed_ids.has(normalized_id) or trimmed_links.has(normalized_id) or trimmed_links.size() >= 2:
+			if not allowed_ids.has(normalized_id) or trimmed_links.has(normalized_id) or trimmed_links.size() >= max_outgoing:
 				continue
-			if int(incoming_by_id.get(normalized_id, 0)) >= 2:
+			if int(incoming_by_id.get(normalized_id, 0)) >= max_incoming:
 				continue
 			trimmed_links.append(normalized_id)
 			incoming_by_id[normalized_id] = int(incoming_by_id.get(normalized_id, 0)) + 1
@@ -1306,7 +1329,7 @@ func _start_game() -> void:
 func _start_battle_node(node: Dictionary) -> void:
 	combo = 0
 	max_combo = 0
-	current_boss = catalog.get_boss(String(node.get("boss_id", "")))
+	current_boss = _enemy_for_node(node)
 	if current_boss == null:
 		current_boss = catalog.get_default_boss()
 	_reset_boss_effects()
@@ -1345,17 +1368,21 @@ func _start_battle_node(node: Dictionary) -> void:
 	call_deferred("_create_board")
 
 func _run_boss_hp_for_node(node: Dictionary) -> int:
-	var run_floor: int = int(node.get("floor", int(run_state.get("floor", 1))))
-	var node_type: String = String(node.get("type", "battle"))
-	var hp: int = _current_boss_base_hp() + (run_floor - 1) * 45
-	if node_type == "elite":
-		hp += 90
-	elif node_type == "boss":
-		hp += 180
-	return hp
+	var run_floor: int = max(1, int(node.get("floor", int(run_state.get("floor", 1)))))
+	var enemy: Resource = _enemy_for_node(node)
+	var base_hp: int = enemy.max_hp if enemy != null else BOSS_MAX_HP
+	var growth: float = enemy.hp_growth_per_floor if enemy != null else 0.0
+	return maxi(1, roundi(float(base_hp) * (1.0 + growth * float(run_floor - 1))))
+
+func _enemy_for_node(node: Dictionary) -> Resource:
+	var enemy_id: String = String(node.get("boss_id", ""))
+	if enemy_id.is_empty():
+		return catalog.get_enemy_for_encounter(String(node.get("type", "battle")))
+	var enemy: Resource = catalog.get_boss(enemy_id)
+	return enemy if enemy != null else catalog.get_default_boss()
 
 func _default_boss_id() -> String:
-	var boss: Resource = catalog.get_default_boss()
+	var boss: Resource = catalog.get_enemy_for_encounter("boss")
 	return boss.id if boss != null else ""
 
 func _current_boss_base_hp() -> int:
@@ -1371,6 +1398,8 @@ func _current_boss_name() -> String:
 func _create_board() -> void:
 	board = BoardModelScript.new()
 	board.setup(catalog, current_roster)
+	board.cell_unlocked.connect(_on_cell_unlocked)
+	board.cell_thawed.connect(_on_cell_thawed)
 	var sigrika_slot: int = _slot_index_for_piece_id(SIGRIKA_PIECE_ID)
 	if sigrika_slot >= 0:
 		sigrika_pending_sun_spirits = int(_resonance_value(sigrika_slot) / 2)
@@ -1463,6 +1492,8 @@ func _show_game_shell(boss_text: String = "团子大魔王：观察中") -> void
 		boss_avatar_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		boss_avatar_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		boss_box.add_child(boss_avatar_texture)
+		boss_avatar.free()
+		boss_avatar = null
 	else:
 		boss_avatar_texture = null
 		boss_box.add_child(boss_avatar)
@@ -1481,6 +1512,7 @@ func _show_game_shell(boss_text: String = "团子大魔王：观察中") -> void
 	boss_box.add_child(boss_text_box)
 	boss_name_label = Label.new()
 	boss_name_label.text = _current_boss_name()
+	boss_name_label.tooltip_text = current_boss.description if current_boss != null else ""
 	boss_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	boss_name_label.add_theme_font_size_override("font_size", roundi(clamp(viewport_size.y * 0.052, 22.0, 32.0)))
 	boss_text_box.add_child(boss_name_label)
@@ -1664,6 +1696,8 @@ func _filter_clear_targets(targets: Array, resonance_clear: bool = false) -> Arr
 		if cell == null:
 			continue
 		if not board.is_piece_cell(cell):
+			continue
+		if board.is_locked(pos):
 			continue
 		if board.effect_stacks(cell, "annihilation") >= int(EFFECT_LIMITS["annihilation"]) and not resonance_clear:
 			continue
@@ -2508,11 +2542,15 @@ func _make_cell_button(pos: Vector2i) -> Button:
 	_add_sigrika_rune_to_button(button, cell, cell_size)
 	if piece != null and piece.icon_texture == null:
 		button.modulate = piece.theme_color
-	if piece != null and board.is_immovable(pos):
+	if board.is_locked(pos):
+		var chains = LockChainOverlayScript.new()
+		chains.locked_cell = cell
+		button.add_child(chains)
+		button.tooltip_text = "锁定：消除上下左右相邻团子后解除"
+	elif piece != null and board.effect_stacks(cell, "annihilation") >= int(EFFECT_LIMITS["annihilation"]):
 		button.text += "\n锁"
-	if board.effect_stacks(cell, "frost") >= int(EFFECT_LIMITS["frost"]):
-		button.modulate = Color(0.65, 0.85, 1.0, 0.82)
-	elif board.effect_stacks(cell, "annihilation") >= int(EFFECT_LIMITS["annihilation"]):
+	_sync_frost_overlay(button, cell)
+	if board.effect_stacks(cell, "annihilation") >= int(EFFECT_LIMITS["annihilation"]):
 		button.modulate = Color(0.62, 0.42, 0.62, 0.82)
 	if pos == selected_cell and (piece == null or piece.icon_texture == null):
 		button.text = "[%s]" % button.text
@@ -2792,6 +2830,7 @@ func _background_color_for_attribute(attribute: String) -> Color:
 
 func _add_piece_icon_to_button(button: Button, texture: Texture2D, cell: Dictionary, piece: PieceDefinition, cell_size: float) -> void:
 	var icon: TextureRect = TextureRect.new()
+	icon.name = "PieceIcon"
 	icon.texture = texture
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -2865,12 +2904,8 @@ func _set_page_margins(left: int, top: int, right: int, bottom: int) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
-		size = get_viewport_rect().size
 		if page != null:
-			page.size = get_viewport_rect().size
 			page.custom_minimum_size = get_viewport_rect().size
-		if content_margin != null:
-			content_margin.size = get_viewport_rect().size
 		if root != null:
 			root.custom_minimum_size = Vector2(0, get_viewport_rect().size.y - 64.0)
 		if current_screen == "menu":
@@ -2898,29 +2933,72 @@ func _cell_text(cell: Dictionary, piece: PieceDefinition) -> String:
 	return "\n".join(parts)
 
 func _add_effect_badge_to_button(button: Button, cell: Dictionary, cell_size: float) -> void:
-	var status_text: String = _piece_effects_text(cell)
-	if status_text.is_empty():
+	var effects: Dictionary = cell.get("effects", {})
+	var active: Array[String] = []
+	for effect_id: String in EFFECT_ATTRIBUTES:
+		if int(effects.get(effect_id, 0)) > 0:
+			active.append(effect_id)
+	# Reserve six horizontal slots without changing the character's icon rect.
+	var slot_width: float = cell_size * 0.96 / 6.0
+	var badge_size: float = maxf(1.0, slot_width - 2.0)
+	if active.is_empty():
 		return
-	var badge: Label = Label.new()
+	var badge := Control.new()
 	badge.name = "EffectBadge"
-	badge.text = status_text
-	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	badge.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	badge.add_theme_font_size_override("font_size", max(10, int(cell_size * 0.13)))
-	badge.add_theme_color_override("font_color", Color.WHITE)
-	badge.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
-	badge.add_theme_constant_override("shadow_offset_x", 1)
-	badge.add_theme_constant_override("shadow_offset_y", 1)
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.anchor_left = 0.02
-	badge.anchor_top = 0.02
-	badge.anchor_right = 0.98
-	badge.anchor_bottom = 0.34
-	badge.offset_left = 0
-	badge.offset_top = 0
-	badge.offset_right = 0
-	badge.offset_bottom = 0
+	badge.z_index = 16
+	badge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	button.add_child(badge)
+	for index in range(active.size()):
+		var effect_id: String = active[index]
+		var attribute: String = EFFECT_ATTRIBUTES[effect_id]
+		var stacks: int = int(effects[effect_id])
+		var item := Control.new()
+		item.name = effect_id
+		item.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		item.anchor_left = 0.5
+		item.anchor_top = 1.0
+		item.anchor_right = 0.5
+		item.anchor_bottom = 1.0
+		item.offset_left = -active.size() * slot_width * 0.5 + index * slot_width
+		item.offset_top = -badge_size - 3.0
+		item.offset_right = item.offset_left + badge_size
+		item.offset_bottom = item.offset_top + badge_size
+		badge.add_child(item)
+		var icon := TextureRect.new()
+		icon.texture = load(ELEMENT_ICON_PATHS[attribute]) as Texture2D
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.modulate = _selection_color_for_attribute(attribute).lightened(0.35)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		item.add_child(icon)
+		var count := Label.new()
+		count.name = "Stacks"
+		count.text = str(stacks)
+		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		count.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		count.add_theme_font_size_override("font_size", maxi(9, roundi(badge_size * 0.65)))
+		count.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35) if stacks >= int(EFFECT_LIMITS[effect_id]) else Color.WHITE)
+		count.add_theme_color_override("font_outline_color", Color(0.10, 0.08, 0.15, 1.0))
+		count.add_theme_constant_override("outline_size", 3)
+		count.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		count.offset_right = 2.0
+		count.offset_bottom = 2.0
+		item.add_child(count)
+
+func _sync_frost_overlay(button: Button, cell: Dictionary) -> void:
+	var existing: Node = button.get_node_or_null("FrostOverlay")
+	var frozen: bool = int(cell.get("effects", {}).get("frost", 0)) >= int(EFFECT_LIMITS["frost"])
+	if frozen and existing == null:
+		var ice = FrostOverlayScript.new()
+		ice.name = "FrostOverlay"
+		ice.frozen_cell = cell
+		button.add_child(ice)
+	elif not frozen and existing != null:
+		button.remove_child(existing)
+		existing.queue_free()
 
 func _refresh_piece_effect_badges(positions: Array) -> void:
 	for pos in positions:
@@ -2934,6 +3012,7 @@ func _refresh_piece_effect_badges(positions: Array) -> void:
 		var cell: Variant = board.get_cell(pos)
 		if cell != null:
 			_add_effect_badge_to_button(button, cell, _board_cell_size())
+			_sync_frost_overlay(button, cell)
 
 func _piece_effects_text(cell: Dictionary) -> String:
 	var parts: Array[String] = []
@@ -2996,7 +3075,7 @@ func _on_cell_pressed(pos: Vector2i) -> void:
 			_activate_echo(pos)
 			return
 	if int(cell["locked_turns"]) > 0:
-		boss_label.text = "团子大魔王：该格被锁定"
+		boss_label.text = "该团子已锁定：消除上下左右相邻团子后解锁"
 		return
 	if selected_cell == Vector2i(-1, -1):
 		if not String(cell["special_effect_id"]).is_empty():
@@ -3448,9 +3527,10 @@ func _animate_clear(positions: Array) -> void:
 		await get_tree().create_timer(POST_CLEAR_PAUSE_SECONDS).timeout
 
 func _animate_attack_boss(positions: Array) -> void:
-	if positions.is_empty() or boss_avatar == null:
+	var target: Control = boss_avatar_texture if is_instance_valid(boss_avatar_texture) else boss_avatar
+	if positions.is_empty() or not is_instance_valid(target):
 		return
-	var target_rect: Rect2 = boss_avatar.get_global_rect()
+	var target_rect: Rect2 = target.get_global_rect()
 	var target_center: Vector2 = target_rect.position + target_rect.size * 0.5
 	var tween: Tween = create_tween()
 	tween.set_parallel(true)
@@ -3498,6 +3578,41 @@ func _animate_attack_boss(positions: Array) -> void:
 		tween.tween_callback(Callable(projectile, "queue_free")).set_delay(delay + ATTACK_FLY_SECONDS)
 	if animated:
 		await tween.finished
+
+func _on_cell_thawed(pos: Vector2i) -> void:
+	if current_screen != "game" or not is_instance_valid(root):
+		return
+	var button: Button = _get_cell_button(pos)
+	if not is_instance_valid(button):
+		return
+	var ice := button.get_node_or_null("FrostOverlay") as Control
+	if ice != null:
+		ice.hide()
+	var burst = LockChainBreakScript.new()
+	burst.fragment_texture = FrostOverlayScript.ICE_TEXTURE
+	burst.initial_opacity = 0.6
+	burst.size = button.size
+	root.add_child(burst)
+	burst.name = "FrostBreak"
+	burst.global_position = button.global_position
+	_refresh_piece_effect_badges([pos])
+
+func _on_cell_unlocked(pos: Vector2i) -> void:
+	if current_screen != "game" or not is_instance_valid(root):
+		return
+	var button: Button = _get_cell_button(pos)
+	if not is_instance_valid(button):
+		return
+	var chains := button.get_node_or_null("LockChainOverlay") as Control
+	if chains != null:
+		chains.hide()
+	# Attach to the battle screen, not a cell: redraw and gravity may remove
+	# the source button immediately after this synchronous unlock signal.
+	# The effect is top-level so the VBox cannot reposition or resize it.
+	var burst = LockChainBreakScript.new()
+	burst.size = button.size
+	root.add_child(burst)
+	burst.global_position = button.global_position
 
 func _collapse_refill_and_animate() -> void:
 	var drop_specs: Array = _collapse_refill_with_drop_specs()
@@ -3671,7 +3786,6 @@ func _after_player_move() -> void:
 	combo += 1
 	max_combo = max(max_combo, combo)
 	moves_since_enemy += 1
-	board.tick_locks()
 	if not board.has_possible_move():
 		_end_game()
 		return
@@ -3690,7 +3804,7 @@ func _after_player_move() -> void:
 				_set_boss_status("霜渐使Boss跳过了本次行动。", "霜渐")
 				_redraw_game()
 				return
-			if _boss_phase() == 1 and rng.randf() <= 0.45:
+			if _enemy_is_enraged():
 				_trigger_enemy_extra_skill()
 			else:
 				_trigger_enemy_effect()
@@ -3727,6 +3841,8 @@ func _refund_run_action() -> void:
 		run_state["actions"] = min(RUN_MAX_ACTIONS, int(run_state.get("actions", 0)) + 1)
 
 func _enemy_check_interval() -> int:
+	if _enemy_is_enraged():
+		return maxi(1, current_boss.enrage_skill_interval)
 	if current_boss != null:
 		return max(1, current_boss.skill_interval)
 	if _boss_phase() <= 2:
@@ -3734,6 +3850,8 @@ func _enemy_check_interval() -> int:
 	return 3
 
 func _enemy_effect_chance() -> float:
+	if _enemy_is_enraged():
+		return clampf(current_boss.enrage_skill_chance, 0.0, 1.0)
 	if current_boss != null:
 		return clamp(current_boss.skill_chance, 0.0, 1.0)
 	match _boss_phase():
@@ -3743,9 +3861,12 @@ func _enemy_effect_chance() -> float:
 			return 0.55
 	return 0.70
 
+func _enemy_is_enraged() -> bool:
+	return current_boss != null and not boss_hp_infinite and boss_hp > 0 and current_boss.enrage_hp_ratio > 0.0 and float(boss_hp) / float(maxi(1, boss_max_hp)) <= current_boss.enrage_hp_ratio
+
 func _trigger_enemy_extra_skill() -> void:
-	_set_boss_status("%s进入濒危阶段，额外技能已触发。" % _current_boss_name(), "蓄力")
-	_redraw_game()
+	if current_boss != null:
+		_apply_boss_skill_effect(current_boss.enrage_skill_effect_id, current_boss.enrage_skill_effect_params)
 
 func _trigger_enemy_effect() -> void:
 	if current_boss != null and not current_boss.skill_effect_id.is_empty():
@@ -3753,50 +3874,53 @@ func _trigger_enemy_effect() -> void:
 		return
 	var roll: int = rng.randi_range(0, 2)
 	if roll == 0:
-		board.lock_random_cells(3)
-		_set_boss_status("团子大魔王：锁定了 3 个格子", "攻击")
+		var locked_count: int = board.lock_random_cells(3)
+		_set_boss_status("团子大魔王：锁定了 %d 个格子" % locked_count, "攻击")
 		_redraw_game()
 	elif roll == 1:
 		combo = 0
 		_set_boss_status("团子大魔王：打断了 Combo", "怒")
 		_redraw_game()
 	else:
-		board.lock_random_cells(1)
-		_set_boss_status("团子大魔王：制造了锁定干扰", "扰")
+		var locked_count: int = board.lock_random_cells(1)
+		_set_boss_status("团子大魔王：制造了 %d 个锁定干扰" % locked_count, "扰")
 		_redraw_game()
 
 func _apply_boss_skill_effect(effect_id: String, params: Dictionary) -> void:
 	match effect_id:
+		"lock_and_break_combo":
+			combo = 0
+			_apply_boss_lock_cells(_param_int(params, "count", 2), "%s：锁定 %d 格并打断 Combo")
 		"boss_random_interference":
 			var roll: int = rng.randi_range(0, 2)
 			if roll == 0:
-				_apply_boss_lock_cells(_param_int(params, "lock_large", 3), _param_int(params, "lock_resonance", 10), "%s：锁定了 %d 个格子")
+				_apply_boss_lock_cells(_param_int(params, "lock_large", 3), "%s：锁定了 %d 个格子")
 			elif roll == 1:
-				_apply_boss_break_combo(_param_int(params, "break_resonance", 6))
+				_apply_boss_break_combo()
 			else:
-				_apply_boss_lock_cells(_param_int(params, "lock_small", 1), _param_int(params, "small_resonance", 5), "%s：制造了锁定干扰")
+				_apply_boss_lock_cells(_param_int(params, "lock_small", 1), "%s：制造了 %d 个锁定干扰")
 		"lock_cells":
-			_apply_boss_lock_cells(_param_int(params, "count", 1), _param_int(params, "resonance", 5), _param_text(params, "status", "%s：锁定了 %d 个格子"))
+			_apply_boss_lock_cells(_param_int(params, "count", 1), _param_text(params, "status", "%s：锁定了 %d 个格子"))
 		"break_combo":
-			_apply_boss_break_combo(_param_int(params, "resonance", 6))
+			_apply_boss_break_combo()
 		"none", "":
 			_redraw_game()
 		_:
 			push_warning("Unsupported boss skill effect_id: %s" % effect_id)
 			_redraw_game()
 
-func _apply_boss_lock_cells(count: int, resonance: int, status_template: String) -> void:
+func _apply_boss_lock_cells(count: int, status_template: String) -> void:
 	count = max(1, count)
-	board.lock_random_cells(count)
+	var locked_count: int = board.lock_random_cells(count)
 	if status_template.contains("%d"):
-		_set_boss_status(status_template % [_current_boss_name(), count], "攻击")
+		_set_boss_status(status_template % [_current_boss_name(), locked_count], "攻击")
 	elif status_template.contains("%s"):
 		_set_boss_status(status_template % _current_boss_name(), "攻击")
 	else:
 		_set_boss_status(status_template, "攻击")
 	_redraw_game()
 
-func _apply_boss_break_combo(resonance: int) -> void:
+func _apply_boss_break_combo() -> void:
 	combo = 0
 	_set_boss_status("%s：打断了 Combo" % _current_boss_name(), "怒")
 	_redraw_game()
@@ -3950,7 +4074,7 @@ func _spawn_pending_sun_spirits() -> void:
 	for y in range(BoardModel.HEIGHT):
 		for x in range(BoardModel.WIDTH):
 			var pos := Vector2i(x, y)
-			if board.is_piece_cell(board.get_cell(pos)):
+			if board.is_piece_cell(board.get_cell(pos)) and not board.is_locked(pos):
 				candidates.append(pos)
 	candidates.shuffle()
 	var echo_ids: Array = ["sun_spirit_gold", "sun_spirit_blue"]
@@ -4268,12 +4392,9 @@ func _release_create_special_pieces(params: Dictionary) -> bool:
 	return true
 
 func _release_cleanse_locks(params: Dictionary) -> bool:
-	for y in range(BoardModel.HEIGHT):
-		for x in range(BoardModel.WIDTH):
-			board.cells[y][x]["locked_turns"] = 0
 	suppress_next_enemy_effect = bool(params.get("suppress_next_enemy", true))
 	_add_score(_param_int(params, "score", 100))
-	_set_boss_status(_param_text(params, "status", "共鸣解放：解除锁定"), _param_text(params, "avatar", "共鸣"))
+	_set_boss_status("共鸣解放：防护生效；已有锁定需消除相邻团子解除", _param_text(params, "avatar", "共鸣"))
 	_redraw_game()
 	return true
 
@@ -4334,12 +4455,9 @@ func _release_diffraction() -> bool:
 	return true
 
 func _release_condensation() -> bool:
-	for y in range(BoardModel.HEIGHT):
-		for x in range(BoardModel.WIDTH):
-			board.cells[y][x]["locked_turns"] = 0
 	suppress_next_enemy_effect = true
 	_add_score(100)
-	_set_boss_status("冷凝共鸣解放：解除锁定并抵消下一次干扰", "冷凝")
+	_set_boss_status("冷凝共鸣解放：抵消下一次干扰；已有锁定需消除相邻团子解除", "冷凝")
 	_redraw_game()
 	return true
 
@@ -4551,8 +4669,8 @@ func _build_cheat_panel() -> void:
 	cheat_direction_option.add_item("纵向")
 	cheat_direction_option.set_item_metadata(1, "vertical")
 	edit_grid.add_child(cheat_direction_option)
-	edit_grid.add_child(_make_cheat_label("锁定回合"))
-	cheat_lock_spin = _make_cheat_spin(0, 9)
+	edit_grid.add_child(_make_cheat_label("锁定（0关 / 1开）"))
+	cheat_lock_spin = _make_cheat_spin(0, 1)
 	edit_grid.add_child(cheat_lock_spin)
 	edit_grid.add_child(_make_cheat_label("叠层效应"))
 	cheat_effect_stack_option = OptionButton.new()
@@ -4805,11 +4923,15 @@ func _resolve_conductive_gather() -> void:
 		for x in range(BoardModel.WIDTH):
 			var pos: Vector2i = Vector2i(x, y)
 			var cell: Variant = board.get_cell(pos)
-			if cell != null and board.effect_stacks(cell, "conductive") >= int(EFFECT_LIMITS["conductive"]):
+			if cell != null and not board.is_locked(pos) and board.effect_stacks(cell, "conductive") >= int(EFFECT_LIMITS["conductive"]):
 				sources.append(pos)
 	if sources.size() < 2:
 		return
-	var pairs: Array = _pair_conductive_sources(sources)
+	var pairs: Array = []
+	for pair in _pair_conductive_sources(sources):
+		var attraction: Dictionary = _electromagnetic_attraction(pair[0], pair[1])
+		if not board.is_locked(attraction["first_destination"]) and not board.is_locked(attraction["second_destination"]):
+			pairs.append(pair)
 	var path_targets: Array = []
 	var destinations: Array = []
 	for pair in pairs:
@@ -4841,10 +4963,12 @@ func _resolve_conductive_gather() -> void:
 		preserved_pieces.append([first_piece, second_piece, destinations[pair_index][0], destinations[pair_index][1]])
 		board.set_cell(first, null)
 		board.set_cell(second, null)
-	await _collapse_refill_and_animate()
 	for preserved in preserved_pieces:
 		board.set_cell(preserved[2], preserved[0])
 		board.set_cell(preserved[3], preserved[1])
+	# Place survivors before gravity, so a falling locked piece cannot be
+	# overwritten at an attraction destination after refill.
+	await _collapse_refill_and_animate()
 	_redraw_game()
 
 func _animate_electromagnetic_attraction(pairs: Array, destinations: Array, path_targets: Array) -> void:
@@ -4995,8 +5119,8 @@ func _cheat_clear_resonance() -> void:
 	_cheat_set_resonance(_cheat_selected_resonance_slot(), 0)
 
 func _cheat_boss_lock_three() -> void:
-	board.lock_random_cells(3)
-	_set_boss_status("作弊器：团子大魔王锁定了 3 个格子", "攻击")
+	var locked_count: int = board.lock_random_cells(3)
+	_set_boss_status("作弊器：团子大魔王锁定了 %d 个格子" % locked_count, "攻击")
 	_redraw_game()
 
 func _cheat_boss_break_combo() -> void:

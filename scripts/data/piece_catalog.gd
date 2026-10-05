@@ -1,4 +1,4 @@
-extends Node
+extends RefCounted
 class_name PieceCatalog
 
 const BossDefinitionScript := preload("res://scripts/data/boss_definition.gd")
@@ -43,6 +43,12 @@ func get_effect(id: String) -> SpecialEffectDefinition:
 
 func get_boss(id: String) -> Resource:
 	return bosses.get(id)
+
+func get_enemy_for_encounter(encounter_type: String) -> Resource:
+	for enemy: Resource in bosses.values():
+		if enemy.encounter_type == encounter_type:
+			return enemy
+	return get_default_boss()
 
 func get_default_boss() -> Resource:
 	if bosses.has("tuanzi_demon_king"):
@@ -121,7 +127,7 @@ func _ensure_default_pieces() -> void:
 func _ensure_default_bosses() -> void:
 	if not bosses.is_empty():
 		return
-	_add_boss("tuanzi_demon_king", "团子大魔王", 300, "", "boss_random_interference", {"lock_large": 3, "lock_small": 1, "lock_resonance": 10, "break_resonance": 6, "small_resonance": 5}, 3, 0.30, "默认大魔王。")
+	_add_boss("tuanzi_demon_king", "团子大魔王", 300, "", "boss_random_interference", {"lock_large": 3, "lock_small": 1}, 3, 0.30, "默认大魔王。")
 
 func _ensure_default_collectibles() -> void:
 	if not collectibles.is_empty():
@@ -263,6 +269,14 @@ func _load_boss_table() -> void:
 			String(row.get("description", "")),
 			max(0, _parse_int(row.get("defense", "20"), 20))
 		)
+		var enemy: Resource = bosses[id]
+		enemy.encounter_type = String(row.get("encounter_type", "boss")).strip_edges()
+		enemy.hp_growth_per_floor = maxf(0.0, _parse_float(row.get("hp_growth_per_floor", "0.2"), 0.2))
+		enemy.enrage_hp_ratio = clampf(_parse_float(row.get("enrage_hp_ratio", "0"), 0.0), 0.0, 1.0)
+		enemy.enrage_skill_interval = maxi(1, _parse_int(row.get("enrage_skill_interval", "2"), 2))
+		enemy.enrage_skill_chance = clampf(_parse_float(row.get("enrage_skill_chance", "1"), 1.0), 0.0, 1.0)
+		enemy.enrage_skill_effect_id = String(row.get("enrage_skill_effect_id", "none"))
+		enemy.enrage_skill_effect_params = _parse_json_object(String(row.get("enrage_skill_effect_params", "{}")))
 
 func _load_collectible_table() -> void:
 	for row in _load_csv_table(COLLECTIBLES_TABLE):

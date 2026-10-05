@@ -1,6 +1,9 @@
 extends RefCounted
 class_name BoardModel
 
+signal cell_unlocked(pos: Vector2i)
+signal cell_thawed(pos: Vector2i)
+
 const WIDTH := 8
 const HEIGHT := 8
 const EFFECT_LIMITS := {
@@ -64,12 +67,20 @@ func set_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
 	var cell: Dictionary = get_cell(pos)
 	var effects: Dictionary = cell.get("effects", {}).duplicate(true)
 	var value: int = clamp(amount, 0, int(EFFECT_LIMITS[effect_id]))
+	var thawed: bool = effect_id == "frost" and int(effects.get("frost", 0)) >= 3 and value < 3
+	if effect_id == "frost":
+		if value >= 3 and int(effects.get("frost", 0)) < 3:
+			cell["frost_vfx_started_msec"] = Time.get_ticks_msec()
+		elif value < 3:
+			cell.erase("frost_vfx_started_msec")
 	if value <= 0:
 		effects.erase(effect_id)
 	else:
 		effects[effect_id] = value
 	cell["effects"] = effects
 	set_cell(pos, cell)
+	if thawed:
+		cell_thawed.emit(pos)
 	return value
 
 func add_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
@@ -79,7 +90,10 @@ func add_effect_stacks(pos: Vector2i, effect_id: String, amount: int) -> int:
 func can_match_cell(pos: Vector2i) -> bool:
 	if not in_bounds(pos) or not is_piece_cell(get_cell(pos)):
 		return false
-	return effect_stacks(get_cell(pos), "annihilation") < 6
+	return not is_locked(pos) and effect_stacks(get_cell(pos), "annihilation") < 6
+
+func is_locked(pos: Vector2i) -> bool:
+	return in_bounds(pos) and get_cell(pos) != null and int(get_cell(pos).get("locked_turns", 0)) > 0
 
 func in_bounds(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < WIDTH and pos.y >= 0 and pos.y < HEIGHT
@@ -177,9 +191,21 @@ func collect_effect_targets(pos: Vector2i, partner_piece_id: String = "") -> Arr
 	return targets
 
 func clear_positions(positions: Array) -> void:
+	# Snapshot actual removals before unlocking: a locked piece hit by this same
+	# batch survives, even when a neighbour is removed and unlocks it.
+	var cleared: Array = []
 	for pos in positions:
-		if in_bounds(pos):
-			cells[pos.y][pos.x] = null
+		if in_bounds(pos) and get_cell(pos) != null and not is_locked(pos) and not cleared.has(pos):
+			cleared.append(pos)
+	for pos in cleared:
+		cells[pos.y][pos.x] = null
+	for pos in cleared:
+		for delta in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			var neighbour: Vector2i = pos + delta
+			if is_locked(neighbour):
+				cells[neighbour.y][neighbour.x]["locked_turns"] = 0
+				cells[neighbour.y][neighbour.x].erase("lock_vfx_started_msec")
+				cell_unlocked.emit(neighbour)
 
 func collapse_and_refill() -> void:
 	for x in range(WIDTH):
@@ -202,17 +228,27 @@ func replace_piece_id(old_id: String, new_id: String) -> int:
 				count += 1
 	return count
 
-func lock_random_cells(count: int) -> void:
-	for i in range(count):
-		var pos: Vector2i = Vector2i(rng.randi_range(0, WIDTH - 1), rng.randi_range(0, HEIGHT - 1))
-		if is_piece_cell(cells[pos.y][pos.x]):
-			cells[pos.y][pos.x]["locked_turns"] = max(1, int(cells[pos.y][pos.x].get("locked_turns", 0)))
-
-func tick_locks() -> void:
+func lock_random_cells(count: int) -> int:
+	var candidates: Array[Vector2i] = []
 	for y in range(HEIGHT):
 		for x in range(WIDTH):
-			if is_piece_cell(cells[y][x]):
-				cells[y][x]["locked_turns"] = max(0, int(cells[y][x].get("locked_turns", 0)) - 1)
+			var cell: Variant = cells[y][x]
+			if is_piece_cell(cell) and int(cell.get("locked_turns", 0)) <= 0:
+				candidates.append(Vector2i(x, y))
+	var locked_count: int = min(max(0, count), candidates.size())
+	# Select without replacement so every successful draw locks a new cell.
+	for index in range(locked_count):
+		var selected_index: int = rng.randi_range(index, candidates.size() - 1)
+		var selected_pos: Vector2i = candidates[selected_index]
+		candidates[selected_index] = candidates[index]
+		candidates[index] = selected_pos
+		cells[selected_pos.y][selected_pos.x]["locked_turns"] = 1
+		cells[selected_pos.y][selected_pos.x]["lock_vfx_started_msec"] = Time.get_ticks_msec()
+	return locked_count
+
+func tick_locks() -> void:
+	# Compatibility with older callers. locked_turns is now a persistent flag.
+	pass
 
 func _fill_new_board() -> void:
 	var attempts: int = 0
@@ -273,20 +309,24 @@ func _merge_intersections(groups: Array) -> Array:
 	for i in range(groups.size()):
 		if used.has(i):
 			continue
+		used[i] = true
 		var positions: Array = groups[i]["positions"].duplicate()
 		var directions: Array = [groups[i]["direction"]]
-		for j in range(i + 1, groups.size()):
-			if used.has(j):
-				continue
-			if groups[i]["piece_id"] != groups[j]["piece_id"]:
-				continue
-			var intersects: bool = false
-			for pos in groups[j]["positions"]:
-				if positions.has(pos):
-					intersects = true
-					break
-			if intersects:
+		var pending: Array[int] = [i]
+		while not pending.is_empty():
+			pending.pop_front()
+			for j in range(groups.size()):
+				if used.has(j) or groups[i]["piece_id"] != groups[j]["piece_id"]:
+					continue
+				var intersects: bool = false
+				for pos in groups[j]["positions"]:
+					if positions.has(pos):
+						intersects = true
+						break
+				if not intersects:
+					continue
 				used[j] = true
+				pending.append(j)
 				for pos in groups[j]["positions"]:
 					if not positions.has(pos):
 						positions.append(pos)

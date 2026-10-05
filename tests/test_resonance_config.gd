@@ -61,9 +61,30 @@ func _initialize() -> void:
 	assert(int(daniya.resonance_effect_params.get("action_count", 0)) == 5 and int(daniya.resonance_effect_params.get("damage_per_stack", 0)) == 3, "达妮娅解放参数错误")
 	var boss: Resource = catalog.get_default_boss()
 	assert(boss != null and boss.defense == 20, "default boss defense should be 20")
+	assert(not boss.skill_effect_params.has("lock_resonance") and not boss.skill_effect_params.has("break_resonance") and not boss.skill_effect_params.has("small_resonance"), "Boss 配置不应保留已废弃的共鸣参数")
 	_test_runtime_gain_rules(catalog)
+	_test_run_map_reachability(catalog)
 	print("resonance config tests passed: %d pieces" % catalog.pieces.size())
 	quit(0)
+
+func _test_run_map_reachability(catalog: PieceCatalog) -> void:
+	var game: Control = MainScript.new()
+	game.catalog = catalog
+	for seed_value in range(200):
+		game.rng.seed = seed_value
+		game.run_state = {}
+		game._generate_floor_map(1)
+		var nodes: Array = game.run_state["map_nodes"]
+		var incoming_by_id: Dictionary = {}
+		for node in nodes:
+			incoming_by_id[String(node["id"])] = 0
+		for node in nodes:
+			for target_id in node["links"]:
+				incoming_by_id[String(target_id)] = int(incoming_by_id.get(String(target_id), 0)) + 1
+		for node in nodes:
+			if int(node["row"]) > 0:
+				assert(int(incoming_by_id[String(node["id"])]) > 0, "路线节点 %s 没有任何入边（seed=%d）" % [String(node["id"]), seed_value])
+	game.free()
 
 func _test_runtime_gain_rules(catalog: PieceCatalog) -> void:
 	var game: Control = MainScript.new()
