@@ -1,0 +1,641 @@
+{
+  "schema_version": 1,
+  "status": "prototype_runtime_unbalanced",
+  "date": "2026-10-06",
+  "role": {
+    "id": "condensation_coletta",
+    "name": "柯莱塔",
+    "attribute": "condensation",
+    "selection_status": "prototype_default",
+    "base_attack": 6,
+    "base_hp": 60,
+    "attack_per_level": 1,
+    "hp_per_level": 5,
+    "max_level": 10,
+    "xp_to_next_level": "current_level + 2"
+  },
+  "defaults": {
+    "board_width": 8,
+    "board_height": 8,
+    "draw_count": 5,
+    "refill_count": 5,
+    "starting_lives": 3,
+    "max_lives": 3,
+    "starting_shells": 20,
+    "starting_supplies": [
+      "healing_vial"
+    ],
+    "supply_slots": 3,
+    "base_ball_yield": 1,
+    "ball_spawn_weights": "equal_for_selected_four_plus_star_and_guard"
+  },
+  "starter_deck": [
+    {
+      "id": "c01",
+      "copies": 4
+    },
+    {
+      "id": "c02",
+      "copies": 3
+    },
+    {
+      "id": "c03",
+      "copies": 2
+    },
+    {
+      "id": "c06",
+      "copies": 1
+    }
+  ],
+  "builds": [
+    {
+      "id": "chain",
+      "name": "连续出牌",
+      "attributes": [
+        "condensation",
+        "thermal",
+        "conductive",
+        "aero"
+      ],
+      "key_cards": [
+        "c04",
+        "g01",
+        "g02",
+        "g03",
+        "g04"
+      ],
+      "loop": "准备牌提高本回合伤害，再用连发牌兑现出牌顺序与整组补牌。"
+    },
+    {
+      "id": "guard",
+      "name": "格挡反击",
+      "attributes": [
+        "condensation",
+        "diffraction",
+        "annihilation",
+        "conductive"
+      ],
+      "key_cards": [
+        "c05",
+        "g05",
+        "g06",
+        "g07",
+        "g08"
+      ],
+      "loop": "先积累格挡；根据敌人意图选择保留防御或消耗部分格挡进攻。"
+    }
+  ],
+  "cards": [
+    {
+      "id": "c01",
+      "type": "attack",
+      "name": "碎晶弹",
+      "pool": "character",
+      "cost": {
+        "condensation": 1
+      },
+      "effect": "造成 1.0A 伤害。",
+      "upgrade": {
+        "effect": "造成 1.5A 伤害。"
+      }
+    },
+    {
+      "id": "c02",
+      "type": "skill",
+      "name": "护身晶幕",
+      "pool": "character",
+      "cost": {
+        "condensation": 1
+      },
+      "effect": "获得 5 格挡。",
+      "upgrade": {
+        "effect": "获得 8 格挡。"
+      }
+    },
+    {
+      "id": "c03",
+      "type": "attack",
+      "name": "交错射击",
+      "pool": "character",
+      "cost": {
+        "condensation": 1
+      },
+      "effect": "造成 0.5A 伤害，然后获得 3 格挡。",
+      "upgrade": {
+        "effect": "造成 0.75A 伤害，然后获得 5 格挡。"
+      }
+    },
+    {
+      "id": "c04",
+      "type": "attack",
+      "name": "连发扳机",
+      "pool": "character",
+      "cost": {
+        "condensation": 1
+      },
+      "effect": "造成 (1.0 + 0.25 × min(N,3))A 伤害。",
+      "upgrade": {
+        "effect": "造成 (1.5 + 0.25 × min(N,3))A 伤害。"
+      }
+    },
+    {
+      "id": "c05",
+      "type": "attack",
+      "name": "棱面射击",
+      "pool": "character",
+      "cost": {
+        "condensation": 1
+      },
+      "effect": "造成 1A 伤害；出牌时格挡 ≥6，再加 1A（合并结算）。",
+      "upgrade": {
+        "effect": "造成 1A 伤害；出牌时格挡 ≥4，再加 1A（合并结算）。"
+      }
+    },
+    {
+      "id": "c06",
+      "type": "attack",
+      "name": "晶簇狙击",
+      "pool": "character",
+      "cost": {
+        "condensation": 2
+      },
+      "effect": "造成 2.5A 伤害。",
+      "upgrade": {
+        "cost": {
+          "condensation": 1
+        },
+        "effect": "造成 2.5A 伤害。"
+      }
+    },
+    {
+      "id": "g01",
+      "type": "skill",
+      "name": "点火",
+      "pool": "common",
+      "cost": {
+        "thermal": 1
+      },
+      "effect": "本玩家回合攻击力 +2，可叠加。",
+      "upgrade": {
+        "effect": "本玩家回合攻击力 +3，可叠加。"
+      }
+    },
+    {
+      "id": "g02",
+      "type": "skill",
+      "name": "电势整备",
+      "pool": "common",
+      "cost": {
+        "conductive": 1
+      },
+      "effect": "本回合下一张伤害牌追加 0.75A 伤害。",
+      "upgrade": {
+        "effect": "本回合下一张伤害牌追加 1.0A 伤害。"
+      }
+    },
+    {
+      "id": "g03",
+      "type": "attack",
+      "name": "乘势追击",
+      "pool": "common",
+      "cost": {
+        "aero": 1
+      },
+      "effect": "造成 0.75A 伤害；N ≥2，再加 0.75A（合并结算）。",
+      "upgrade": {
+        "effect": "造成 1A 伤害；N ≥2，再加 1A（合并结算）。"
+      }
+    },
+    {
+      "id": "g04",
+      "type": "attack",
+      "name": "熔流齐射",
+      "pool": "common",
+      "cost": {
+        "thermal": 2
+      },
+      "effect": "造成 (2.0 + 0.25 × min(N,4))A 伤害。",
+      "upgrade": {
+        "effect": "造成 (2.5 + 0.25 × min(N,4))A 伤害。"
+      }
+    },
+    {
+      "id": "g05",
+      "type": "skill",
+      "name": "折光屏障",
+      "pool": "common",
+      "cost": {
+        "diffraction": 1
+      },
+      "effect": "获得 6 格挡。",
+      "upgrade": {
+        "effect": "获得 9 格挡。"
+      }
+    },
+    {
+      "id": "g06",
+      "type": "skill",
+      "name": "稳压护层",
+      "pool": "common",
+      "cost": {
+        "conductive": 1
+      },
+      "effect": "获得 4 格挡；本回合下一张直接获得格挡的牌额外获得 3 格挡。",
+      "upgrade": {
+        "effect": "获得 6 格挡；本回合下一张直接获得格挡的牌额外获得 4 格挡。"
+      }
+    },
+    {
+      "id": "g07",
+      "type": "attack",
+      "name": "倾盾冲击",
+      "pool": "common",
+      "cost": {
+        "annihilation": 1
+      },
+      "effect": "消耗至多 8 点当前格挡，造成 1.0A + 实际消耗格挡数的伤害。",
+      "upgrade": {
+        "effect": "消耗至多 12 点当前格挡，造成 1A + 实际消耗格挡数的伤害。"
+      }
+    },
+    {
+      "id": "g08",
+      "type": "attack",
+      "name": "暮色掩护",
+      "pool": "common",
+      "cost": {
+        "annihilation": 1
+      },
+      "effect": "获得 4 格挡，然后造成 0.5A 伤害。",
+      "upgrade": {
+        "effect": "获得 6 格挡，然后造成 0.75A 伤害。"
+      }
+    },
+    {
+      "id": "g09",
+      "type": "skill",
+      "name": "透镜校准",
+      "pool": "common",
+      "cost": {
+        "diffraction": 1
+      },
+      "effect": "本回合下一张伤害牌无视敌人格挡，并追加 0.25A 伤害。",
+      "upgrade": {
+        "effect": "本回合下一张伤害牌无视敌人格挡，并追加 0.75A 伤害。"
+      }
+    },
+    {
+      "id": "g10",
+      "type": "skill",
+      "name": "应急冰壁",
+      "pool": "common",
+      "cost": {
+        "condensation": 2
+      },
+      "effect": "获得 12 格挡。",
+      "upgrade": {
+        "cost": {
+          "condensation": 1
+        },
+        "effect": "获得 12 格挡。"
+      }
+    },
+    {
+      "id": "g11",
+      "type": "attack",
+      "name": "气流突袭",
+      "pool": "common",
+      "cost": {
+        "aero": 1
+      },
+      "effect": "造成 1.0A 伤害。",
+      "upgrade": {
+        "effect": "造成 1.5A 伤害。"
+      }
+    },
+    {
+      "id": "g12",
+      "type": "attack",
+      "name": "灼热弹丸",
+      "pool": "common",
+      "cost": {
+        "thermal": 1
+      },
+      "effect": "造成 1.0A 伤害；打出时敌人格挡为 0，追加 2 点伤害。",
+      "upgrade": {
+        "effect": "造成 1.5A 伤害；出牌时敌人格挡为 0，再加 2 点伤害。"
+      }
+    }
+  ],
+  "relics": [
+    {
+      "id": "r01",
+      "name": "初潮徽章",
+      "effect": "每战重置完成后，获得 1 点角色初始属性技能点。",
+      "price": 45
+    },
+    {
+      "id": "r02",
+      "name": "散热片",
+      "effect": "每个玩家回合成功打出第 3 张牌后获得 2 格挡；每回合只触发一次。",
+      "price": 45
+    },
+    {
+      "id": "r03",
+      "name": "盾面镀层",
+      "effect": "本回合消除行动实际移除至少 3 颗防御球时，额外获得 3 格挡；整次行动只触发一次。",
+      "price": 45
+    },
+    {
+      "id": "r04",
+      "name": "镀银棱镜",
+      "effect": "伤害牌开始结算时，若玩家格挡至少 6，该牌额外造成 2 点伤害。",
+      "price": 45
+    },
+    {
+      "id": "r05",
+      "name": "固态电池",
+      "effect": "每场战斗第一次实际抽到牌的整组补牌后，获得 1 点角色初始属性技能点；每战只触发一次。",
+      "price": 45
+    }
+  ],
+  "supplies": [
+    {
+      "id": "healing_vial",
+      "name": "治疗补给",
+      "effect": "恢复 20 战斗生命，不超过当前上限。",
+      "price": 15
+    },
+    {
+      "id": "guard_vial",
+      "name": "护盾补给",
+      "effect": "获得 10 格挡。",
+      "price": 12
+    },
+    {
+      "id": "energy_vial",
+      "name": "属性补给",
+      "effect": "选择六属性中的一种，获得 3 点对应技能点；可以选择未入棋盘的属性。",
+      "price": 18
+    }
+  ],
+  "enemies": [
+    {
+      "id": "patrol",
+      "name": "巡游体",
+      "hp": 36,
+      "pattern": [
+        {
+          "type": "attack",
+          "damage": 5,
+          "hits": 1
+        },
+        {
+          "type": "attack",
+          "damage": 6,
+          "hits": 1
+        },
+        {
+          "type": "guard",
+          "amount": 7
+        }
+      ]
+    },
+    {
+      "id": "shell",
+      "name": "甲壳体",
+      "hp": 48,
+      "pattern": [
+        {
+          "type": "guard",
+          "amount": 8
+        },
+        {
+          "type": "attack",
+          "damage": 8,
+          "hits": 1
+        },
+        {
+          "type": "attack",
+          "damage": 6,
+          "hits": 1
+        }
+      ]
+    },
+    {
+      "id": "charger",
+      "name": "蓄力体",
+      "hp": 42,
+      "pattern": [
+        {
+          "type": "charge",
+          "description": "蓄力，本次不伤害；下次按行为表重击。"
+        },
+        {
+          "type": "attack",
+          "damage": 12,
+          "hits": 1
+        },
+        {
+          "type": "attack",
+          "damage": 4,
+          "hits": 1
+        }
+      ]
+    },
+    {
+      "id": "striker",
+      "name": "连击体",
+      "hp": 40,
+      "pattern": [
+        {
+          "type": "attack",
+          "damage": 3,
+          "hits": 2
+        },
+        {
+          "type": "attack",
+          "damage": 7,
+          "hits": 1
+        },
+        {
+          "type": "guard",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "boss",
+      "name": "晶壳统御者（试作名）",
+      "hp": 150,
+      "pattern": [
+        {
+          "type": "attack",
+          "damage": 8,
+          "hits": 1
+        },
+        {
+          "type": "guard",
+          "amount": 12
+        },
+        {
+          "type": "attack",
+          "damage": 4,
+          "hits": 3
+        },
+        {
+          "type": "charge",
+          "description": "蓄力，下次重击18。"
+        },
+        {
+          "type": "attack",
+          "damage": 18,
+          "hits": 1
+        }
+      ]
+    }
+  ],
+  "map": {
+    "rows_before_boss": 10,
+    "boss_row": 11,
+    "columns": 5,
+    "path_count": 6,
+    "min_rest_row": 4,
+    "first_row": "battle",
+    "last_pre_boss_row": "rest",
+    "guaranteed_reward_row": 5,
+    "middle_node_weights": {
+      "battle": 55,
+      "event": 20,
+      "shop": 15,
+      "rest": 10
+    },
+    "constraints": [
+      "所有边只前进一排",
+      "所有节点来自通向终点的完整路径",
+      "允许分叉与合流",
+      "连线不交叉，至少两个随机入口，入口各自连接不同的第二层节点",
+      "按中间节点权重生成类型配额，洗牌后按限制分配，无法分配时回退为战斗",
+      "非固定层的同一分岔优先提供不同类型，配额受限时允许重复战斗",
+      "前3层不生成休整，第9层不生成休整",
+      "同一条边两端不连续为商店，也不连续为补给",
+      "第5层全部为奖励节点，每条路线必定经过一次",
+      "整张章节节点类型与连线提前可见"
+    ]
+  },
+  "rewards": {
+    "node": {
+      "shells": 15,
+      "relic_options": 2,
+      "all_relics_shells": 15
+    },
+    "victory": {
+      "shells": [
+        12,
+        18
+      ],
+      "card_chance": 0.85,
+      "relic_chance": 0.1,
+      "supply_chance": 0.25
+    },
+    "defeat": {
+      "shells": [
+        3,
+        6
+      ],
+      "card_chance": 0.25,
+      "relic_chance": 0.02,
+      "supply_chance": 0.1
+    },
+    "boss_defeat": "只记录失败统计，不再发放本局已无法使用的道具或卡牌；待整体内容方案评审",
+    "ordinary_defeat_requires_remaining_lives": true,
+    "terminal_defeat": "record_statistics_only_no_run_cards_relics_or_supplies"
+  },
+  "enemy_scaling": {
+    "ordinary_only": true,
+    "segments": [
+      {
+        "rows": [
+          1,
+          3
+        ],
+        "hp_multiplier": 1,
+        "damage_per_hit_add": 0,
+        "guard_add": 0
+      },
+      {
+        "rows": [
+          4,
+          6
+        ],
+        "hp_multiplier": 1.2,
+        "damage_per_hit_add": 1,
+        "guard_add": 2
+      },
+      {
+        "rows": [
+          7,
+          10
+        ],
+        "hp_multiplier": 1.4,
+        "damage_per_hit_add": 2,
+        "guard_add": 4
+      }
+    ],
+    "hp_rounding": "ceil"
+  },
+  "content_rules": {
+    "duplicate_cards_allowed": true,
+    "card_upgrade_per_copy": 1,
+    "reward_candidates_distinct": true,
+    "reward_candidates_can_match_owned_cards": true,
+    "reward_candidate_attribute_filter": false,
+    "reward_pool": "selected_character_cards_plus_all_common_cards_equal_weight",
+    "new_cards_upgraded": false,
+    "duplicate_relics_allowed": false,
+    "relic_pool_exhausted_shells": 15
+  },
+  "shop": {
+    "card_slots": 4,
+    "relic_slots": 2,
+    "supply_slots": 2,
+    "card_price": 20,
+    "relic_price": 45,
+    "refresh": false,
+    "each_slot_stock": 1
+  },
+  "events": [
+    {
+      "id": "cache",
+      "name": "遗落补给",
+      "choices": [
+        "获得10贝币",
+        "获得一份随机补给（满槽时可替换或放弃）"
+      ]
+    },
+    {
+      "id": "workbench",
+      "name": "废弃工坊",
+      "choices": [
+        "支付15贝币升级一张未升级牌",
+        "免费离开"
+      ]
+    },
+    {
+      "id": "trade_life",
+      "name": "危险交易",
+      "choices": [
+        "损失1探索生命并获得一件未持有藏品；生命为1时仍允许选择，归零则立即结束探索，不领取本局已无法使用的奖品",
+        "拒绝"
+      ]
+    },
+    {
+      "id": "prune",
+      "name": "旧日笔记",
+      "choices": [
+        "永久移除一张牌",
+        "获得8贝币"
+      ]
+    }
+  ]
+}

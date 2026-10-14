@@ -630,6 +630,7 @@ func _show_roster_select() -> void:
 	selector_layout.add_child(bag_panel)
 	var selector_scroll: ScrollContainer = ScrollContainer.new()
 	selector_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	selector_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	bag_panel.add_child(selector_scroll)
 	var list: GridContainer = GridContainer.new()
 	list.columns = 2 if viewport_size.x < 1400.0 else 3
@@ -1222,7 +1223,7 @@ func _show_run_map() -> void:
 	top_bar.add_child(settings_button)
 	var map_scroll: ScrollContainer = ScrollContainer.new()
 	map_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	map_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	map_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	map_scroll.custom_minimum_size = Vector2(0, clamp(get_viewport_rect().size.y * 0.84, 520.0, 860.0))
 	map_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	map_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -4605,6 +4606,7 @@ func _build_cheat_panel() -> void:
 	var scroll: ScrollContainer = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	cheat_panel.add_child(scroll)
 	var box: VBoxContainer = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -5665,7 +5667,7 @@ func _show_run_collectible_bag(selected_index: int = -1) -> void:
 	layout.add_child(list_panel)
 	var scroll: ScrollContainer = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list_panel.add_child(scroll)

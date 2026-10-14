@@ -1,0 +1,21 @@
+{
+  "mode": "built-in image_gen.imagegen",
+  "reference": "C:/Users/2246/AppData/Local/Temp/codex-clipboard-74407e6e-7a35-44b0-ad40-64ecec2a8f4b.png",
+  "prompts": [
+    {
+      "id": "stage-background",
+      "alpha": false,
+      "prompt": "Edit the provided battle mockup into a reusable game BACKGROUND ONLY, 16:9. Preserve exactly its ornate paper puppet theater style, burgundy/plum curtains across top corners, hanging gold stars at edges, layered cream and lavender paper castle skyline, warm paper platforms and columns on far left and right, small lanterns on bottom corners, deep violet stage floor. REMOVE EVERY UI ELEMENT: all text, numbers, hearts, resource icons, both characters, all panel papers, the entire central game board and grid, all tiles, all cards, all buttons, phase header, frames and intent panel. Fill removed areas with seamlessly continued low-contrast paper theatre scenery. The center 45% must be quiet dark muted plum/lavender stage backdrop; left and right mid-height platform tops at y34% empty for future characters. No readable text, no icons, no character silhouettes, no game pieces. Crisp textured cut-paper illustration matching reference, not blurry. This background will sit under actual runtime controls."
+    },
+    {
+      "id": "paper-panel",
+      "alpha": true,
+      "prompt": "Generate a reusable rectangular parchment UI panel skin extracted in style from the provided paper theatre UI. ONE single blank landscape 4:3 cream parchment ticket panel centered filling 90% image, isolated on genuine transparent background. Slight irregular layered paper edges, thin antique gold inner stitched border, clipped ornamental corners, very subtle tan paper grain, muted warm cream center clean enough for dark Chinese text. No text, no characters, no symbols, no stars, no icons, no other elements. Nearly rectangular silhouette suitable for nine-slice stretching, uniform narrow margin around all edges, restrained shadow on transparent alpha. Refined painted paper-cut game art, use cream panels in reference as art direction."
+    },
+    {
+      "id": "card-art-atlas",
+      "alpha": false,
+      "prompt": "Create a production game card illustration atlas matching the ornate fantasy paper-puppet battle UI reference. Exact 3 columns x 2 rows of equal SQUARE illustration cells, overall 3:2 landscape image 1536x1024. No margins between cells, no text, no letters, no numbers, no card borders, no UI, no characters. Every cell has dark plum navy background, illuminated hand-painted jewel and paper-cut illustration; important motif centered inside middle 75% of its cell. Top row left: three crystalline icy shards shooting diagonally with cyan trails, top middle: faceted blue ice shield with a wreath of frozen shards, top right: two crossed elegant icy silver fantasy pistols with cyan crystal accents. Bottom row left: a large dramatic cluster of blue crystals bursting from ground, bottom middle: vivid warm orange red flame ribbon forming a sweeping arc, bottom right: a golden armored shield with violet and cream protective magical ribbons. Exactly six separate illustrations in clean aligned grid. High quality stylized card splash art, clear silhouettes when viewed small, bright focal centers dark perimeters. Each is an illustration only, absolutely no labels or typography."
+    }
+  ]
+}
